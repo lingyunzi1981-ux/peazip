@@ -7,14 +7,14 @@ PRODUCTVERSION 11,3,0,0
   { 
   BLOCK "040904E4" 
    { 
-VALUE "CompanyName", "Giorgio Tani" 
+VALUE "CompanyName", "West Beauty Group" 
 VALUE "FileVersion", "11.3.0" 
-VALUE "FileDescription", "PeaZip, file and archive manager" 
-VALUE "InternalName", "PeaZip" 
+VALUE "FileDescription", "西美压缩 - file and archive manager" 
+VALUE "InternalName", "西美压缩" 
 VALUE "LegalCopyright", "Giorgio Tani, LGPLv3" 
 VALUE "LegalTrademarks", "none" 
-VALUE "OriginalFilename", "PeaZip" 
-VALUE "ProductName", "PeaZip" 
+VALUE "OriginalFilename", "西美压缩.exe" 
+VALUE "ProductName", "西美压缩" 
 VALUE "ProductVersion", "11.3.0" 
    } 
   } 
