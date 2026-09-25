@@ -46,6 +46,24 @@ jobs:
           $ErrorActionPreference = 'Stop'
           choco install innosetup -y --no-progress
           $exe = (Resolve-Path 'artifact/WestBeautyCompression.exe').Path
+          # Build a complete runtime stage. The source tree intentionally contains placeholders
+          # for third-party compression backends, so seed the runtime from the official PeaZip
+          # WIN64 portable package, then replace the GUI and PEA binaries with this fork's builds.
+          $stage = Join-Path $env:RUNNER_TEMP 'WestBeautyRuntime'
+          $portableZip = Join-Path $env:RUNNER_TEMP 'peazip-portable.zip'
+          $portableExtract = Join-Path $env:RUNNER_TEMP 'peazip-portable'
+          Invoke-WebRequest -Uri 'https://github.com/peazip/PeaZip/releases/download/11.2.0/peazip_portable-11.2.0.WIN64.zip' -OutFile $portableZip
+          Expand-Archive -Path $portableZip -DestinationPath $portableExtract -Force
+          $portableRoot = Get-ChildItem $portableExtract -Directory | Select-Object -First 1
+          if (-not $portableRoot) { throw 'Official PeaZip portable runtime could not be extracted.' }
+          Copy-Item $portableRoot.FullName $stage -Recurse -Force
+          Copy-Item $exe (Join-Path $stage 'peazip.exe') -Force
+          Copy-Item $exe (Join-Path $stage '西美压缩.exe') -Force
+          $peaBuilt = Get-ChildItem artifact -Filter 'pea.exe' | Select-Object -First 1
+          if ($peaBuilt) { Copy-Item $peaBuilt.FullName (Join-Path $stage 'pea.exe') -Force }
+          if (-not (Test-Path (Join-Path $stage 'res\\bin\\7z'))) { throw '7z runtime backend missing from stage.' }
+          if (-not (Test-Path (Join-Path $stage 'pea.exe'))) { throw 'pea.exe missing from stage.' }
+          if (-not (Test-Path (Join-Path $stage 'res'))) { throw 'res runtime folder missing from stage.' }
           $license = (Resolve-Path 'LICENSE').Path
           $lang = (Resolve-Path '.github/workflows/ChineseSimplified.isl').Path
           $iss = Join-Path $env:RUNNER_TEMP 'westbeauty.iss'
@@ -77,7 +95,7 @@ jobs:
             'Name: "contextmenu"; Description: "添加到 Windows 右键菜单"; GroupDescription: "附加选项："; Flags: checkedonce',
             '',
             '[Files]',
-            ('Source: "' + $exe + '"; DestDir: "{app}"; DestName: "西美压缩.exe"; Flags: ignoreversion'),
+            ('Source: "' + $stage + '\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs'),
             ('Source: "' + $license + '"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion'),
             '',
             '[Icons]',
@@ -101,6 +119,8 @@ jobs:
           Pop-Location
           Copy-Item (Join-Path $env:RUNNER_TEMP 'output\\WestBeautyCompression-Setup-x64.exe') 'artifact\\WestBeautyCompression-Setup-x64.exe' -Force
           if (-not (Test-Path 'artifact\\WestBeautyCompression-Setup-x64.exe')) { throw 'Installer was not produced.' }
+          $installerSize = (Get-Item 'artifact\\WestBeautyCompression-Setup-x64.exe').Length
+          if ($installerSize -lt 10000000) { throw "Installer is unexpectedly small ($installerSize bytes); runtime payload is likely incomplete." }
 
       - name: Upload final installer
         uses: actions/upload-artifact@v4
