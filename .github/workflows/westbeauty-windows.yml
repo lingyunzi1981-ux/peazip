@@ -135,5 +135,5 @@ jobs:
         with:
           name: WestBeautyCompression-Windows-x64
           path: |
-            ${{ runner.temp }}/delivery/西美压缩-Setup-x64.exe
+            ${{ runner.temp }}/delivery/
           if-no-files-found: error
