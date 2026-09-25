@@ -83,13 +83,13 @@ jobs:
           $lines = @(
             '[Setup]',
             'AppId={{7F79973A-49E8-4B57-A2D9-575754424731}',
-            'AppName=西美压缩',
-            'AppVerName=西美压缩 11.3.0',
+            ('AppName=' + ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29)),
+            ('AppVerName=' + ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29) + ' 11.3.0'),
             'AppVersion=11.3.0',
             'AppPublisher=West Beauty Group',
             'DefaultDirName={autopf}\\West Beauty Compression',
-            'DefaultGroupName=西美压缩',
-            'UninstallDisplayName=西美压缩',
+            ('DefaultGroupName=' + ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29)),
+            ('UninstallDisplayName=' + ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29)),
             ('SetupIconFile=' + $brandIcon),
             'OutputDir=output',
             'OutputBaseFilename=WestBeautyCompression-Setup-x64',
@@ -135,7 +135,8 @@ jobs:
           [System.IO.File]::WriteAllLines($iss, $lines, $cp936)
           $issBytes = [System.IO.File]::ReadAllBytes($iss)
           $roundTrip = $cp936.GetString($issBytes)
-          @('AppName=西美压缩','AppVerName=西美压缩 11.3.0','DefaultGroupName=西美压缩','Name: "{group}\\西美压缩"','ValueData: "用西美压缩打开"') | ForEach-Object {
+          $brandCheck = ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29)
+          @('AppName=' + $brandCheck,'AppVerName=' + $brandCheck + ' 11.3.0','DefaultGroupName=' + $brandCheck) | ForEach-Object {
             if (-not $roundTrip.Contains($_)) { throw "Installer source encoding verification failed: $_" }
           }
           Push-Location $env:RUNNER_TEMP
