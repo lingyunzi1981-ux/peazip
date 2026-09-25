@@ -130,6 +130,49 @@ jobs:
           if (-not (Test-Path (Join-Path $stage 'res\\bin\\7z'))) { throw 'Runtime payload missing: res\\bin\\7z' }
           Get-ChildItem $delivery
 
+      - name: Silent install and smoke test
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'delivery\WestBeautyCompression-Setup-x64.exe'
+          if (-not (Test-Path $installer)) { throw 'Installer missing before smoke test.' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'WestBeautyInstalled'
+          $p = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR=' + $installDir)) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Silent installer failed with exit code $($p.ExitCode)." }
+
+          $required = @(
+            (Join-Path $installDir '西美压缩.exe'),
+            (Join-Path $installDir 'pea.exe'),
+            (Join-Path $installDir 'res')
+          )
+          foreach ($item in $required) {
+            if (-not (Test-Path $item)) { throw "Installed runtime missing: $item" }
+          }
+
+          $sevenZipRoot = Join-Path $installDir 'res\bin\7z'
+          if (-not (Test-Path $sevenZipRoot)) { throw 'Installed 7z backend directory missing.' }
+          $sevenZipFiles = Get-ChildItem $sevenZipRoot -Recurse -File -ErrorAction Stop
+          if (-not $sevenZipFiles -or $sevenZipFiles.Count -eq 0) { throw 'Installed 7z backend directory is empty.' }
+          Write-Host "Installed 7z backend files:"
+          $sevenZipFiles | Select-Object FullName,Length
+
+          $app = Join-Path $installDir '西美压缩.exe'
+          $proc = Start-Process -FilePath $app -PassThru
+          Start-Sleep -Seconds 8
+          if ($proc.HasExited) {
+            if ($proc.ExitCode -ne 0) { throw "西美压缩 exited unexpectedly with code $($proc.ExitCode)." }
+            Write-Host '西美压缩 started and exited cleanly.'
+          } else {
+            Write-Host "西美压缩 launched successfully. PID=$($proc.Id)"
+            Stop-Process -Id $proc.Id -Force
+          }
+
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          if (Test-Path $uninstaller) {
+            Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait
+          }
+          Write-Host 'Silent install, runtime checks, 7z backend check, and GUI launch smoke test passed.'
+
       - name: Upload final installer
         uses: actions/upload-artifact@v4
         with:
