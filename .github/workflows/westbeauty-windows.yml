@@ -136,7 +136,12 @@ jobs:
           $issBytes = [System.IO.File]::ReadAllBytes($iss)
           $roundTrip = $cp936.GetString($issBytes)
           $brandCheck = ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29)
-          @('AppName=' + $brandCheck,'AppVerName=' + $brandCheck + ' 11.3.0','DefaultGroupName=' + $brandCheck) | ForEach-Object {
+          $encodingChecks = @(
+            ('AppName=' + $brandCheck)
+            ('AppVerName=' + $brandCheck + ' 11.3.0')
+            ('DefaultGroupName=' + $brandCheck)
+          )
+          $encodingChecks | ForEach-Object {
             if (-not $roundTrip.Contains($_)) { throw "Installer source encoding verification failed: $_" }
           }
           Push-Location $env:RUNNER_TEMP
