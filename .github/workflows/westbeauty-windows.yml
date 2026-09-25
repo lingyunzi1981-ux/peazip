@@ -35,6 +35,7 @@ jobs:
             }
           $peaZip = Get-ChildItem artifact -Filter 'peazip.exe' | Select-Object -First 1
           if (-not $peaZip) { throw 'peazip.exe was not produced.' }
+          Copy-Item $peaZip.FullName -Destination (Join-Path artifact 'WestBeautyCompression.exe') -Force
           Copy-Item $peaZip.FullName -Destination (Join-Path artifact '西美压缩.exe') -Force
           Get-ChildItem artifact
           if (-not (Test-Path (Join-Path artifact '西美压缩.exe'))) { throw '西美压缩.exe was not produced.' }
@@ -44,7 +45,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           choco install innosetup -y --no-progress
-          $exe = (Resolve-Path 'artifact/西美压缩.exe').Path
+          $exe = (Resolve-Path 'artifact/WestBeautyCompression.exe').Path
           $license = (Resolve-Path 'LICENSE').Path
           $lang = (Resolve-Path '.github/workflows/ChineseSimplified.isl').Path
           $iss = Join-Path $env:RUNNER_TEMP 'westbeauty.iss'
@@ -59,7 +60,7 @@ jobs:
             'DefaultGroupName=西美压缩',
             'UninstallDisplayName=西美压缩',
             'OutputDir=output',
-            'OutputBaseFilename=西美压缩-Setup-x64',
+            'OutputBaseFilename=WestBeautyCompression-Setup-x64',
             'Compression=lzma2/max',
             'SolidCompression=yes',
             'ArchitecturesAllowed=x64compatible',
@@ -98,13 +99,14 @@ jobs:
           Push-Location $env:RUNNER_TEMP
           & "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" $iss
           Pop-Location
-          Copy-Item (Join-Path $env:RUNNER_TEMP 'output\\西美压缩-Setup-x64.exe') 'artifact\\西美压缩-Setup-x64.exe' -Force
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'output\\WestBeautyCompression-Setup-x64.exe') 'artifact\\WestBeautyCompression-Setup-x64.exe' -Force
+          if (-not (Test-Path 'artifact\\WestBeautyCompression-Setup-x64.exe')) { throw 'Installer was not produced.' }
 
       - name: Upload final installer
         uses: actions/upload-artifact@v4
         with:
-          name: 西美压缩-正式版-Windows-x64
+          name: WestBeautyCompression-Windows-x64
           path: |
-            artifact/西美压缩.exe
-            artifact/西美压缩-Setup-x64.exe
+            artifact/WestBeautyCompression.exe
+            artifact/WestBeautyCompression-Setup-x64.exe
           if-no-files-found: error
