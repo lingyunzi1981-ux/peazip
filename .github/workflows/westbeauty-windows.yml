@@ -122,6 +122,7 @@ jobs:
             'Root: HKCR; Subkey: "*\\shell\\WestBeautyCompress"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\西美压缩.exe"; Tasks: contextmenu',
             'Root: HKCR; Subkey: "*\\shell\\WestBeautyCompress\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\西美压缩.exe"" -add2archive ""%1"""; Tasks: contextmenu',
             'Root: HKCR; Subkey: "*\\shell\\WestBeautyOpen"; ValueType: string; ValueName: ""; ValueData: "用西美压缩打开"; Flags: uninsdeletekey; Tasks: contextmenu',
+            'Root: HKCR; Subkey: "*\\shell\\WestBeautyOpen"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\西美压缩.exe"; Tasks: contextmenu',
             'Root: HKCR; Subkey: "*\\shell\\WestBeautyOpen\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\西美压缩.exe"" ""%1"""; Tasks: contextmenu',
             '',
             '[Run]',
