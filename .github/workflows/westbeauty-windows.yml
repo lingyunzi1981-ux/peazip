@@ -39,9 +39,71 @@ jobs:
           Get-ChildItem artifact
           if (-not (Test-Path (Join-Path artifact '西美压缩.exe'))) { throw '西美压缩.exe was not produced.' }
 
-      - name: Upload cloud-built binaries
+      - name: Build Chinese installer
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install innosetup -y --no-progress
+          $exe = (Resolve-Path 'artifact/西美压缩.exe').Path
+          $license = (Resolve-Path 'LICENSE').Path
+          $iss = Join-Path $env:RUNNER_TEMP 'westbeauty.iss'
+          $lines = @(
+            '[Setup]',
+            'AppId={{7F79973A-49E8-4B57-A2D9-575754424731}',
+            'AppName=西美压缩',
+            'AppVerName=西美压缩 11.3.0',
+            'AppVersion=11.3.0',
+            'AppPublisher=West Beauty Group',
+            'DefaultDirName={autopf}\\西美压缩',
+            'DefaultGroupName=西美压缩',
+            'UninstallDisplayName=西美压缩',
+            'OutputDir=output',
+            'OutputBaseFilename=西美压缩-Setup-x64',
+            'Compression=lzma2/max',
+            'SolidCompression=yes',
+            'ArchitecturesAllowed=x64compatible',
+            'ArchitecturesInstallIn64BitMode=x64compatible',
+            'WizardStyle=modern',
+            'PrivilegesRequired=admin',
+            ('LicenseFile=' + $license),
+            '',
+            '[Languages]',
+            'Name: "chinesesimp"; MessagesFile: "compiler:Languages\\ChineseSimplified.isl"',
+            '',
+            '[Tasks]',
+            'Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加选项："; Flags: checkedonce',
+            'Name: "contextmenu"; Description: "添加到 Windows 右键菜单"; GroupDescription: "附加选项："; Flags: checkedonce',
+            '',
+            '[Files]',
+            ('Source: "' + $exe + '"; DestDir: "{app}"; DestName: "西美压缩.exe"; Flags: ignoreversion'),
+            ('Source: "' + $license + '"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion'),
+            '',
+            '[Icons]',
+            'Name: "{group}\\西美压缩"; Filename: "{app}\\西美压缩.exe"',
+            'Name: "{group}\\卸载 西美压缩"; Filename: "{uninstallexe}"',
+            'Name: "{autodesktop}\\西美压缩"; Filename: "{app}\\西美压缩.exe"; Tasks: desktopicon',
+            '',
+            '[Registry]',
+            'Root: HKCR; Subkey: "*\\shell\\WestBeautyCompress"; ValueType: string; ValueName: ""; ValueData: "西美压缩 - 添加到压缩文件..."; Flags: uninsdeletekey; Tasks: contextmenu',
+            'Root: HKCR; Subkey: "*\\shell\\WestBeautyCompress"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\西美压缩.exe"; Tasks: contextmenu',
+            'Root: HKCR; Subkey: "*\\shell\\WestBeautyCompress\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\西美压缩.exe"" -add2archive ""%1"""; Tasks: contextmenu',
+            'Root: HKCR; Subkey: "*\\shell\\WestBeautyOpen"; ValueType: string; ValueName: ""; ValueData: "用西美压缩打开"; Flags: uninsdeletekey; Tasks: contextmenu',
+            'Root: HKCR; Subkey: "*\\shell\\WestBeautyOpen\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\西美压缩.exe"" ""%1"""; Tasks: contextmenu',
+            '',
+            '[Run]',
+            'Filename: "{app}\\西美压缩.exe"; Description: "运行 西美压缩"; Flags: nowait postinstall skipifsilent'
+          )
+          Set-Content -Path $iss -Value $lines -Encoding UTF8
+          Push-Location $env:RUNNER_TEMP
+          & "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" $iss
+          Pop-Location
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'output\\西美压缩-Setup-x64.exe') 'artifact\\西美压缩-Setup-x64.exe' -Force
+
+      - name: Upload final installer
         uses: actions/upload-artifact@v4
         with:
-          name: 西美压缩-Windows-x64
-          path: artifact/*.exe
+          name: 西美压缩-正式版-Windows-x64
+          path: |
+            artifact/西美压缩.exe
+            artifact/西美压缩-Setup-x64.exe
           if-no-files-found: error
