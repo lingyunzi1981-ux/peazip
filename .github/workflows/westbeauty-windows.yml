@@ -1,0 +1,44 @@
+name: West Beauty Windows Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sources]
+    paths:
+      - 'peazip-sources/**'
+      - '.github/workflows/westbeauty-windows.yml'
+
+jobs:
+  build-windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Lazarus and build PeaZip
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pwsh -File '.github/workflows/setup.ps1'
+
+      - name: Collect Windows executables
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Get-ChildItem -Path . -Recurse -File -Include *.exe |
+            Where-Object { $_.FullName -notmatch '\\.git\\' } |
+            ForEach-Object {
+              Copy-Item $_.FullName -Destination (Join-Path artifact $_.Name) -Force
+            }
+          Get-ChildItem artifact
+          if (-not (Get-ChildItem artifact -Filter *.exe)) { throw 'No Windows executables were produced.' }
+
+      - name: Upload cloud-built binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: WestBeauty-Compression-Windows-x64
+          path: artifact/*.exe
+          if-no-files-found: error
