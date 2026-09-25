@@ -78,7 +78,7 @@ jobs:
             'DefaultGroupName=西美压缩',
             'UninstallDisplayName=西美压缩',
             'OutputDir=output',
-            'OutputBaseFilename=WestBeautyCompression-Setup-x64',
+            'OutputBaseFilename=西美压缩-Setup-x64',
             'Compression=lzma2/max',
             'SolidCompression=yes',
             'ArchitecturesAllowed=x64compatible',
@@ -117,16 +117,23 @@ jobs:
           Push-Location $env:RUNNER_TEMP
           & "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" $iss
           Pop-Location
-          Copy-Item (Join-Path $env:RUNNER_TEMP 'output\\WestBeautyCompression-Setup-x64.exe') 'artifact\\WestBeautyCompression-Setup-x64.exe' -Force
-          if (-not (Test-Path 'artifact\\WestBeautyCompression-Setup-x64.exe')) { throw 'Installer was not produced.' }
-          $installerSize = (Get-Item 'artifact\\WestBeautyCompression-Setup-x64.exe').Length
+          $builtInstaller = Join-Path $env:RUNNER_TEMP 'output\\西美压缩-Setup-x64.exe'
+          if (-not (Test-Path $builtInstaller)) { throw 'Installer was not produced.' }
+          $delivery = Join-Path $env:RUNNER_TEMP 'delivery'
+          New-Item -ItemType Directory -Force -Path $delivery | Out-Null
+          Copy-Item $builtInstaller (Join-Path $delivery '西美压缩-Setup-x64.exe') -Force
+          $installerSize = (Get-Item $builtInstaller).Length
           if ($installerSize -lt 10000000) { throw "Installer is unexpectedly small ($installerSize bytes); runtime payload is likely incomplete." }
+          @('西美压缩.exe','pea.exe','res') | ForEach-Object {
+            if (-not (Test-Path (Join-Path $stage $_))) { throw "Runtime payload missing: $_" }
+          }
+          if (-not (Test-Path (Join-Path $stage 'res\\bin\\7z'))) { throw 'Runtime payload missing: res\\bin\\7z' }
+          Get-ChildItem $delivery
 
       - name: Upload final installer
         uses: actions/upload-artifact@v4
         with:
           name: WestBeautyCompression-Windows-x64
           path: |
-            artifact/WestBeautyCompression.exe
-            artifact/WestBeautyCompression-Setup-x64.exe
+            ${{ runner.temp }}/delivery/西美压缩-Setup-x64.exe
           if-no-files-found: error
