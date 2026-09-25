@@ -24,6 +24,15 @@ jobs:
           $ErrorActionPreference = 'Stop'
           pwsh -File '.github/workflows/setup.ps1'
 
+      - name: Build West Beauty brand icon
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install imagemagick.app -y --no-progress
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          magick -background none '.github/branding/westbeauty-compression.svg' -define icon:auto-resize=256,128,64,48,32,16 'artifact/WestBeautyCompression.ico'
+          if (-not (Test-Path 'artifact/WestBeautyCompression.ico')) { throw 'Brand icon was not produced.' }
+
       - name: Collect Windows executables
         shell: powershell
         run: |
@@ -37,6 +46,9 @@ jobs:
           if (-not $peaZip) { throw 'peazip.exe was not produced.' }
           Copy-Item $peaZip.FullName -Destination (Join-Path artifact 'WestBeautyCompression.exe') -Force
           Copy-Item $peaZip.FullName -Destination (Join-Path artifact '西美压缩.exe') -Force
+          choco install rcedit -y --no-progress
+          & rcedit (Join-Path (Resolve-Path artifact).Path 'WestBeautyCompression.exe') --set-icon (Resolve-Path 'artifact/WestBeautyCompression.ico').Path
+          & rcedit (Join-Path (Resolve-Path artifact).Path '西美压缩.exe') --set-icon (Resolve-Path 'artifact/WestBeautyCompression.ico').Path
           Get-ChildItem artifact
           if (-not (Test-Path (Join-Path artifact '西美压缩.exe'))) { throw '西美压缩.exe was not produced.' }
 
@@ -59,6 +71,7 @@ jobs:
           Copy-Item $portableRoot.FullName $stage -Recurse -Force
           Copy-Item $exe (Join-Path $stage 'peazip.exe') -Force
           Copy-Item $exe (Join-Path $stage '西美压缩.exe') -Force
+          $brandIcon = (Resolve-Path 'artifact/WestBeautyCompression.ico').Path
           $peaBuilt = Get-ChildItem artifact -Filter 'pea.exe' | Select-Object -First 1
           if ($peaBuilt) { Copy-Item $peaBuilt.FullName (Join-Path $stage 'pea.exe') -Force }
           if (-not (Test-Path (Join-Path $stage 'res\\bin\\7z'))) { throw '7z runtime backend missing from stage.' }
@@ -77,6 +90,7 @@ jobs:
             'DefaultDirName={autopf}\\西美压缩',
             'DefaultGroupName=西美压缩',
             'UninstallDisplayName=西美压缩',
+            ('SetupIconFile=' + $brandIcon),
             'OutputDir=output',
             'OutputBaseFilename=WestBeautyCompression-Setup-x64',
             'Compression=lzma2/max',
