@@ -33,12 +33,15 @@ jobs:
             ForEach-Object {
               Copy-Item $_.FullName -Destination (Join-Path artifact $_.Name) -Force
             }
+          $peaZip = Get-ChildItem artifact -Filter 'peazip.exe' | Select-Object -First 1
+          if (-not $peaZip) { throw 'peazip.exe was not produced.' }
+          Copy-Item $peaZip.FullName -Destination (Join-Path artifact '西美压缩.exe') -Force
           Get-ChildItem artifact
-          if (-not (Get-ChildItem artifact -Filter *.exe)) { throw 'No Windows executables were produced.' }
+          if (-not (Test-Path (Join-Path artifact '西美压缩.exe'))) { throw '西美压缩.exe was not produced.' }
 
       - name: Upload cloud-built binaries
         uses: actions/upload-artifact@v4
         with:
-          name: WestBeauty-Compression-Windows-x64
+          name: 西美压缩-Windows-x64
           path: artifact/*.exe
           if-no-files-found: error
