@@ -83,13 +83,13 @@ jobs:
           $lines = @(
             '[Setup]',
             'AppId={{7F79973A-49E8-4B57-A2D9-575754424731}',
-            'AppName=West Beauty Compression',
-            'AppVerName=West Beauty Compression 11.3.0',
+            'AppName=西美压缩',
+            'AppVerName=西美压缩 11.3.0',
             'AppVersion=11.3.0',
             'AppPublisher=West Beauty Group',
             'DefaultDirName={autopf}\\West Beauty Compression',
-            'DefaultGroupName=West Beauty Compression',
-            'UninstallDisplayName=West Beauty Compression',
+            'DefaultGroupName=西美压缩',
+            'UninstallDisplayName=西美压缩',
             ('SetupIconFile=' + $brandIcon),
             'OutputDir=output',
             'OutputBaseFilename=WestBeautyCompression-Setup-x64',
@@ -128,7 +128,16 @@ jobs:
             '[Run]',
             'Filename: "{app}\\西美压缩.exe"; Description: "运行 西美压缩"; Flags: nowait postinstall skipifsilent'
           )
-          Set-Content -Path $iss -Value $lines -Encoding UTF8
+          # Inno Setup's Simplified Chinese language file declares CP936.
+          # Encode the generated script as GBK/CP936 too, so Chinese AppName,
+          # Start Menu names, shortcuts and registry strings are decoded correctly.
+          $cp936 = [System.Text.Encoding]::GetEncoding(936)
+          [System.IO.File]::WriteAllLines($iss, $lines, $cp936)
+          $issBytes = [System.IO.File]::ReadAllBytes($iss)
+          $roundTrip = $cp936.GetString($issBytes)
+          @('AppName=西美压缩','AppVerName=西美压缩 11.3.0','DefaultGroupName=西美压缩','Name: "{group}\\西美压缩"','ValueData: "用西美压缩打开"') | ForEach-Object {
+            if (-not $roundTrip.Contains($_)) { throw "Installer source encoding verification failed: $_" }
+          }
           Push-Location $env:RUNNER_TEMP
           & "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" $iss
           Pop-Location
