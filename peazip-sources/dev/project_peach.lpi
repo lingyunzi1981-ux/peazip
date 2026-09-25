@@ -8,7 +8,7 @@
         <LRSInOutputDirectory Value="False"/>
         <CompatibilityMode Value="True"/>
       </Flags>
-      <Title Value="PeaZip"/>
+      <Title Value="西美压缩"/>
       <Scaled Value="True"/>
       <UseXPManifest Value="True"/>
       <XPManifest>
