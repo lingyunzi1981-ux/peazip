@@ -43,7 +43,7 @@ else
       umetadarkstyle.ApplyMetaDarkStyle(DefaultDark);
       end;
 {$ENDIF}
-Application.Title:='PeaZip';
+Application.Title:='西美压缩';
 Application.Initialize;
 Application.CreateForm(TFormPeach, FormPeach);
 {$IFDEF MSWINDOWS}
