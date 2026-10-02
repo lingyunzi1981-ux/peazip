@@ -40147,7 +40147,7 @@ else
    if archive_content=txt_list_nomatch+txt_2_7_list_tryflatorpw then stitle2:='| '+archive_content;
    end;
 if fun<>'FILEBROWSER' then stitle2:='| '+getmagicbytes_arc(FormPeach.EditOpenIn.Text)+' '+stitle2;
-FormPeach.Caption:=stitle1+' '+stitle2;
+FormPeach.Caption:=APPMAIN+' - '+stitle1+' '+stitle2;
 if statusr=txt_list_found then status0:=statusr;
 with FormPeach do
 begin
@@ -41519,7 +41519,7 @@ set_lastobjpc;
 if sizetotal<>0 then i:=(sizefree*100) div sizetotal;
 statust:=inttostr(FormPeach.StringGridList.Rowcount-1)+' '+txt_units+'; '+nicenumber(inttostr(sizetotal),filesizebase)+', '+nicenumber(inttostr(sizefree),filesizebase)+' '+txt_free2+' ('+inttostr(i)+'%)';
 update_listview;
-FormPeach.Caption:=txt_mypc;
+FormPeach.Caption:=APPMAIN+' - '+txt_mypc;
 indir:=txt_mypc;
 prevarchive:='';
 listingdir:=false;

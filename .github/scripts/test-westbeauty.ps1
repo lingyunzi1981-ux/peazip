@@ -8,10 +8,10 @@ $installDir = Join-Path $env:ProgramFiles '西美压缩 验收'
 $work = Join-Path $env:RUNNER_TEMP '西美压缩 测试 & unicode'
 New-Item -ItemType Directory -Force $work,$evidence | Out-Null
 $results = [Collections.Generic.List[object]]::new()
-function Check([string]$Name, [bool]$Condition) {
+function Check([string]$Name, [bool]$Condition, [switch]$Soft) {
     $results.Add(@{ test=$Name; passed=$Condition })
     Write-Host "CHECK $Name : $Condition"
-    if (-not $Condition) { throw "Acceptance failed: $Name" }
+    if (-not $Condition -and -not $Soft) { throw "Acceptance failed: $Name" }
 }
 function Start-App([string]$File, [string[]]$Arguments = @()) {
     $info = [Diagnostics.ProcessStartInfo]::new($File)
@@ -101,7 +101,9 @@ public static class ShortcutReader {
     Start-Sleep 10
     $gui.Refresh()
     Check 'GUI remains running' (-not $gui.HasExited)
-    Check 'GUI has branded responsive window' ($gui.MainWindowHandle -ne 0 -and $gui.Responding -and $gui.MainWindowTitle.Contains($brand))
+    @{ title=$gui.MainWindowTitle; handle=$gui.MainWindowHandle.ToInt64(); responding=$gui.Responding } | ConvertTo-Json | Set-Content (Join-Path $evidence 'gui-process.json') -Encoding utf8
+    Check 'GUI has responsive main window' ($gui.MainWindowHandle -ne 0 -and $gui.Responding)
+    Check 'GUI title includes brand' ($gui.MainWindowTitle.Contains($brand)) -Soft
     $gui.MainWindowTitle | Set-Content (Join-Path $evidence 'window-title.txt') -Encoding utf8
     Save-Screenshot 'main-window.png'
     Close-Gui $gui
@@ -186,6 +188,7 @@ public static class ShortcutReader {
         if ($key) { $key.Dispose() }
     }
     Check 'Uninstall preserves user settings intentionally' (Test-Path $conf)
+    Check 'All acceptance checks passed' (-not @($results | Where-Object { -not $_.passed }).Count)
 } catch {
     $_ | Out-String | Set-Content (Join-Path $evidence 'failure.txt') -Encoding utf8
     Save-Screenshot 'failure.png'
