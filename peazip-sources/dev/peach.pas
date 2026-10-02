@@ -6122,7 +6122,7 @@ const
   RAR5STRING    = 'Details: RAR 5'; //check first 14 characters
   READE_LIST    = '7Z, ACE, ARC/WRC, ARJ, BR, BZ/TBZ, CAB, CHM/CHW/HXS, COMPOUND (MSI, DOC, XLS, PPT), CPIO, GZ/TGZ, ISO, Java (JAR, EAR, WAR), LZH/LHA, Linux (DEB, PET/PUP, RPM, SLP), NSIS, OOo, PAK/PK3/PK4, PAQ/LPAQ/ZPAQ, PEA, QUAD/BALZ/BCM, RAR, TAR, WIM/SWM, XPI, Z/TZ, ZIP, ZST...';
   WRITEE_LIST   = '7Z, 7Z-sfx, ARC, ARC-sfx, BR, BZ2, GZ, *PAQ, PEA, QUAD/BALZ/BCM, split, TAR, UPX, WIM, XZ, ZIP, ZST';
-  APPMAIN       = 'PeaZip';
+  APPMAIN       = '西美压缩';
   STR_7Z        = '7Z';
   STR_ARC       = 'ARC';
   STR_BROTLI    = 'Brotli';
@@ -17244,7 +17244,7 @@ case panelname of
    begin
    prevpanel:='open';
    goarchiving:=false;
-   if titlestring<>'' then Caption:=titlestring else Caption:='PeaZip';
+   if titlestring<>'' then Caption:=titlestring else Caption:=APPMAIN;
    titlestring:='';
    status0:=txt_list_browsing;
    if EditOpenInInteractive.Caption<>txt_mypc then
@@ -17332,9 +17332,9 @@ case panelname of
    'defaults' :
    begin
    //prevpanel left unchanged, to be able to return to previous panel when editing is done
-   if Caption<>'PeaZip' then prevcaption:=Caption;
+   if Caption<>APPMAIN then prevcaption:=Caption;
    titlestring:='';
-   Caption:='PeaZip';
+   Caption:=APPMAIN;
    PanelOptions.Top:=0;
    PanelOptions.Visible:=true;
    FormPeach.SplitterOptions.Left:=(splitter3size*qscale) div 100;
@@ -17900,7 +17900,7 @@ begin
 Result:=-1;
 {$IFDEF MSWINDOWS}
 wingetappdatafolder;
-s:=winappdatafolder+'PeaZip\';
+s:=winappdatafolder+'WestBeautyCompression\';
 wingetappdata:=0;
 {$ENDIF}
 end;
@@ -23123,7 +23123,7 @@ end;
 
 procedure default_defaults;
 begin
-lang_file:='default.txt';//lang file
+lang_file:='zh-cn.txt';//lang file
 gwcompact:=false;
 FormGwrap.pmCompact.Checked:=false;
 autoclosegwrap:=2; //close pealauncher when job completes if no error happens
@@ -28680,7 +28680,7 @@ rewrite(conf);
 write_header(conf);
 writeln(conf,theme_path);
 writeconf_default_colors;
-lang_file:='default.txt'; //set default language
+lang_file:='zh-cn.txt'; //set default language
 writeconf_defaults;
 CloseFile(conf);
 result:=0;
@@ -28749,7 +28749,7 @@ if FileExists(resource_path+'portable') then //if file exists, assume portable v
 else
    begin
    {$IFDEF MSWINDOWS}
-   if wingetappdata(confpath)<>0 then confpath:=(GetEnvironmentVariable('APPDATA'))+'\PeaZip\'; //if wingetappdata fails use env variables
+   if wingetappdata(confpath)<>0 then confpath:=(GetEnvironmentVariable('APPDATA'))+'\WestBeautyCompression\'; //if wingetappdata fails use env variables
    {$ELSE}
    s:=GetEnvironmentVariable('XDG_CONFIG_HOME');
    if s<>'' then confpath:=s+'/peazip/'
@@ -35387,7 +35387,7 @@ defaultarchiveaction:=0;
 FormPeach.ComboBox7zFun.ItemIndex:=0;
 archive_type_select(STR_7Z);
 archive_type_select(STR_ZIP);
-FormPeach.Caption:='PeaZip';
+FormPeach.Caption:=APPMAIN;
 if ptmpcode<>'' then cleardir(ptmpdir,true,false);
 if pstmpdir<>'' then cleardir(pstmpdir,true,false);
 reset_temp(1);
@@ -35411,7 +35411,7 @@ if pMessageInfoYesNo(txt_4_4_confremove)=6 then
    FormPeach.Height:=DHEIGTH;
    load_conf;
    end;
-FormPeach.Caption:='PeaZip';
+FormPeach.Caption:=APPMAIN;
 if pMessageInfoYesNo(txt_4_4_confremoveall)=6 then
    begin
    udeletefile(confpath+'bookmarks.txt');

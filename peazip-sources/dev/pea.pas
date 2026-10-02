@@ -8527,7 +8527,7 @@ try
    if Succeeded(ShGetSpecialFolderLocation(FormPea.Handle,26,pidl)) then //26 is CSIDL_APPDATA numerical value
       if ShGetPathfromIDList(pidl, Buf ) then
          begin
-         s:=(Buf)+'\PeaZip\';
+         s:=(Buf)+'\WestBeautyCompression\';
          CoTaskMemFree(pidl);
          wingetappdata:=0;
          end
@@ -8619,7 +8619,7 @@ try
       binpath:=resource_path+'bin'+directoryseparator;//binaries, architecture dependant
       sharepath:=resource_path+'share'+directoryseparator;//non binaries resources, non-architecture dependant
       {$IFDEF MSWINDOWS}
-      if wingetappdata(confpath)<>0 then confpath:=(GetEnvironmentVariable('APPDATA'))+'\PeaZip\'; //if wingetappdata fails use env variables
+      if wingetappdata(confpath)<>0 then confpath:=(GetEnvironmentVariable('APPDATA'))+'\WestBeautyCompression\'; //if wingetappdata fails use env variables
       {$ELSE}
       s:=GetEnvironmentVariable('XDG_CONFIG_HOME');
       if s<>'' then confpath:=s+'/peazip/'

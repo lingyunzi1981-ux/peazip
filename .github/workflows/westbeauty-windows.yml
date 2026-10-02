@@ -3,210 +3,53 @@ name: West Beauty Windows Build
 on:
   workflow_dispatch:
   push:
-    branches: [sources]
+    branches: [sources, codex/ximei-windows-stability]
     paths:
       - 'peazip-sources/**'
       - '.github/workflows/westbeauty-windows.yml'
+      - '.github/workflows/ChineseSimplified.isl'
+      - '.github/scripts/**'
+
+permissions:
+  contents: read
 
 jobs:
   build-windows-x64:
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
+      - name: Validate PowerShell scripts
+        run: |
+          foreach ($file in Get-ChildItem .github/scripts/*.ps1) {
+            $tokens=$null; $errors=$null
+            $null=[System.Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors)
+            if ($errors.Count) { $errors | Format-List *; throw "Invalid script: $file" }
+          }
       - name: Install Lazarus and build PeaZip
-        shell: powershell
         run: |
-          $ErrorActionPreference = 'Stop'
-          pwsh -File '.github/workflows/setup.ps1'
-
-      - name: Build West Beauty brand icon
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          choco install imagemagick.app -y --no-progress
-          New-Item -ItemType Directory -Force -Path artifact | Out-Null
-          magick -background none '.github/branding/westbeauty-compression.svg' -define icon:auto-resize=256,128,64,48,32,16 'artifact/WestBeautyCompression.ico'
-          if (-not (Test-Path 'artifact/WestBeautyCompression.ico')) { throw 'Brand icon was not produced.' }
-
-      - name: Collect Windows executables
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path artifact | Out-Null
-          Get-ChildItem -Path . -Recurse -File -Include *.exe |
-            Where-Object { $_.FullName -notmatch '\\.git\\' } |
-            ForEach-Object {
-              Copy-Item $_.FullName -Destination (Join-Path artifact $_.Name) -Force
-            }
-          $peaZip = Get-ChildItem artifact -Filter 'peazip.exe' | Select-Object -First 1
-          if (-not $peaZip) { throw 'peazip.exe was not produced.' }
-          Copy-Item $peaZip.FullName -Destination (Join-Path artifact 'WestBeautyCompression.exe') -Force
-          Copy-Item $peaZip.FullName -Destination (Join-Path artifact '西美压缩.exe') -Force
-          choco install rcedit -y --no-progress
-          & rcedit (Join-Path (Resolve-Path artifact).Path 'WestBeautyCompression.exe') --set-icon (Resolve-Path 'artifact/WestBeautyCompression.ico').Path
-          & rcedit (Join-Path (Resolve-Path artifact).Path '西美压缩.exe') --set-icon (Resolve-Path 'artifact/WestBeautyCompression.ico').Path
-          Get-ChildItem artifact
-          if (-not (Test-Path (Join-Path artifact '西美压缩.exe'))) { throw '西美压缩.exe was not produced.' }
-
-      - name: Build Chinese installer
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          choco install innosetup -y --no-progress
-          $exe = (Resolve-Path 'artifact/WestBeautyCompression.exe').Path
-          # Build a complete runtime stage. The source tree intentionally contains placeholders
-          # for third-party compression backends, so seed the runtime from the official PeaZip
-          # WIN64 portable package, then replace the GUI and PEA binaries with this fork's builds.
-          $stage = Join-Path $env:RUNNER_TEMP 'WestBeautyRuntime'
-          $portableZip = Join-Path $env:RUNNER_TEMP 'peazip-portable.zip'
-          $portableExtract = Join-Path $env:RUNNER_TEMP 'peazip-portable'
-          Invoke-WebRequest -Uri 'https://github.com/peazip/PeaZip/releases/download/11.2.0/peazip_portable-11.2.0.WIN64.zip' -OutFile $portableZip
-          Expand-Archive -Path $portableZip -DestinationPath $portableExtract -Force
-          $portableRoot = Get-ChildItem $portableExtract -Directory | Select-Object -First 1
-          if (-not $portableRoot) { throw 'Official PeaZip portable runtime could not be extracted.' }
-          Copy-Item $portableRoot.FullName $stage -Recurse -Force
-          Copy-Item $exe (Join-Path $stage 'peazip.exe') -Force
-          Copy-Item $exe (Join-Path $stage '西美压缩.exe') -Force
-          $brandIcon = (Resolve-Path 'artifact/WestBeautyCompression.ico').Path
-          $peaBuilt = Get-ChildItem artifact -Filter 'pea.exe' | Select-Object -First 1
-          if ($peaBuilt) { Copy-Item $peaBuilt.FullName (Join-Path $stage 'pea.exe') -Force }
-          if (-not (Test-Path (Join-Path $stage 'res\\bin\\7z'))) { throw '7z runtime backend missing from stage.' }
-          if (-not (Test-Path (Join-Path $stage 'pea.exe'))) { throw 'pea.exe missing from stage.' }
-          if (-not (Test-Path (Join-Path $stage 'res'))) { throw 'res runtime folder missing from stage.' }
-          $license = (Resolve-Path 'LICENSE').Path
-          $lang = (Resolve-Path '.github/workflows/ChineseSimplified.isl').Path
-          $iss = Join-Path $env:RUNNER_TEMP 'westbeauty.iss'
-          $lines = @(
-            '[Setup]',
-            'AppId={{7F79973A-49E8-4B57-A2D9-575754424731}',
-            ('AppName=' + ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29)),
-            ('AppVerName=' + ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29) + ' 11.3.0'),
-            'AppVersion=11.3.0',
-            'AppPublisher=West Beauty Group',
-            'DefaultDirName={autopf}\\West Beauty Compression',
-            ('DefaultGroupName=' + ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29)),
-            ('UninstallDisplayName=' + ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29)),
-            ('SetupIconFile=' + $brandIcon),
-            'OutputDir=output',
-            'OutputBaseFilename=WestBeautyCompression-Setup-x64',
-            'Compression=lzma2/max',
-            'SolidCompression=yes',
-            'ArchitecturesAllowed=x64compatible',
-            'ArchitecturesInstallIn64BitMode=x64compatible',
-            'WizardStyle=modern',
-            'PrivilegesRequired=admin',
-            ('LicenseFile=' + $license),
-            '',
-            '[Languages]',
-            ('Name: "chinesesimp"; MessagesFile: "' + $lang + '"'),
-            '',
-            '[Tasks]',
-            'Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加选项："; Flags: checkedonce',
-            'Name: "contextmenu"; Description: "添加到 Windows 右键菜单"; GroupDescription: "附加选项："; Flags: checkedonce',
-            '',
-            '[Files]',
-            ('Source: "' + $stage + '\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs'),
-            ('Source: "' + $license + '"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion'),
-            '',
-            '[Icons]',
-            'Name: "{group}\\西美压缩"; Filename: "{app}\\西美压缩.exe"',
-            'Name: "{group}\\卸载 西美压缩"; Filename: "{uninstallexe}"',
-            'Name: "{autodesktop}\\西美压缩"; Filename: "{app}\\西美压缩.exe"; Tasks: desktopicon',
-            '',
-            '[Registry]',
-            'Root: HKCR; Subkey: "*\\shell\\WestBeautyCompress"; ValueType: string; ValueName: ""; ValueData: "西美压缩 - 添加到压缩文件..."; Flags: uninsdeletekey; Tasks: contextmenu',
-            'Root: HKCR; Subkey: "*\\shell\\WestBeautyCompress"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\西美压缩.exe"; Tasks: contextmenu',
-            'Root: HKCR; Subkey: "*\\shell\\WestBeautyCompress\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\西美压缩.exe"" -add2archive ""%1"""; Tasks: contextmenu',
-            'Root: HKCR; Subkey: "*\\shell\\WestBeautyOpen"; ValueType: string; ValueName: ""; ValueData: "用西美压缩打开"; Flags: uninsdeletekey; Tasks: contextmenu',
-            'Root: HKCR; Subkey: "*\\shell\\WestBeautyOpen"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\\西美压缩.exe"; Tasks: contextmenu',
-            'Root: HKCR; Subkey: "*\\shell\\WestBeautyOpen\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\西美压缩.exe"" ""%1"""; Tasks: contextmenu',
-            '',
-            '[Run]',
-            'Filename: "{app}\\西美压缩.exe"; Description: "运行 西美压缩"; Flags: nowait postinstall skipifsilent'
-          )
-          # Inno Setup's Simplified Chinese language file declares CP936.
-          # Encode the generated script as GBK/CP936 too, so Chinese AppName,
-          # Start Menu names, shortcuts and registry strings are decoded correctly.
-          $cp936 = [System.Text.Encoding]::GetEncoding(936)
-          [System.IO.File]::WriteAllLines($iss, $lines, $cp936)
-          $issBytes = [System.IO.File]::ReadAllBytes($iss)
-          $roundTrip = $cp936.GetString($issBytes)
-          $brandCheck = ([char]0x897F)+([char]0x7F8E)+([char]0x538B)+([char]0x7F29)
-          $encodingChecks = @(
-            ('AppName=' + $brandCheck)
-            ('AppVerName=' + $brandCheck + ' 11.3.0')
-            ('DefaultGroupName=' + $brandCheck)
-          )
-          $encodingChecks | ForEach-Object {
-            if (-not $roundTrip.Contains($_)) { throw "Installer source encoding verification failed: $_" }
-          }
-          Push-Location $env:RUNNER_TEMP
-          & "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" $iss
-          Pop-Location
-          $builtInstaller = Join-Path $env:RUNNER_TEMP 'output\\WestBeautyCompression-Setup-x64.exe'
-          if (-not (Test-Path $builtInstaller)) { throw 'Installer was not produced.' }
-          $delivery = Join-Path $env:RUNNER_TEMP 'delivery'
-          New-Item -ItemType Directory -Force -Path $delivery | Out-Null
-          Copy-Item $builtInstaller (Join-Path $delivery 'WestBeautyCompression-Setup-x64.exe') -Force
-          $installerSize = (Get-Item $builtInstaller).Length
-          if ($installerSize -lt 10000000) { throw "Installer is unexpectedly small ($installerSize bytes); runtime payload is likely incomplete." }
-          @('西美压缩.exe','pea.exe','res') | ForEach-Object {
-            if (-not (Test-Path (Join-Path $stage $_))) { throw "Runtime payload missing: $_" }
-          }
-          if (-not (Test-Path (Join-Path $stage 'res\\bin\\7z'))) { throw 'Runtime payload missing: res\\bin\\7z' }
-          Get-ChildItem $delivery
-
-      - name: Silent install and smoke test
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $installer = Join-Path $env:RUNNER_TEMP 'delivery\WestBeautyCompression-Setup-x64.exe'
-          if (-not (Test-Path $installer)) { throw 'Installer missing before smoke test.' }
-          $installDir = Join-Path $env:RUNNER_TEMP 'WestBeautyInstalled'
-          $p = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR=' + $installDir)) -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Silent installer failed with exit code $($p.ExitCode)." }
-
-          $required = @(
-            (Join-Path $installDir '西美压缩.exe'),
-            (Join-Path $installDir 'pea.exe'),
-            (Join-Path $installDir 'res')
-          )
-          foreach ($item in $required) {
-            if (-not (Test-Path $item)) { throw "Installed runtime missing: $item" }
-          }
-
-          $sevenZipRoot = Join-Path $installDir 'res\bin\7z'
-          if (-not (Test-Path $sevenZipRoot)) { throw 'Installed 7z backend directory missing.' }
-          $sevenZipFiles = Get-ChildItem $sevenZipRoot -Recurse -File -ErrorAction Stop
-          if (-not $sevenZipFiles -or $sevenZipFiles.Count -eq 0) { throw 'Installed 7z backend directory is empty.' }
-          Write-Host "Installed 7z backend files:"
-          $sevenZipFiles | Select-Object FullName,Length
-
-          $app = Join-Path $installDir '西美压缩.exe'
-          $proc = Start-Process -FilePath $app -PassThru
-          Start-Sleep -Seconds 8
-          if ($proc.HasExited) {
-            if ($proc.ExitCode -ne 0) { throw "西美压缩 exited unexpectedly with code $($proc.ExitCode)." }
-            Write-Host '西美压缩 started and exited cleanly.'
-          } else {
-            Write-Host "西美压缩 launched successfully. PID=$($proc.Id)"
-            Stop-Process -Id $proc.Id -Force
-          }
-
-          $uninstaller = Join-Path $installDir 'unins000.exe'
-          if (Test-Path $uninstaller) {
-            Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait
-          }
-          Write-Host 'Silent install, runtime checks, 7z backend check, and GUI launch smoke test passed.'
-
-      - name: Upload final installer
+          & .github/workflows/setup.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Lazarus build failed' }
+      - name: Build complete Unicode installer
+        run: .github/scripts/build-westbeauty.ps1
+      - name: Verify Windows installation and archive operations
+        run: .github/scripts/test-westbeauty.ps1
+      - name: Upload verified installer
         uses: actions/upload-artifact@v4
         with:
           name: WestBeautyCompression-Windows-x64
-          path: |
-            ${{ runner.temp }}/delivery/
+          path: ${{ runner.temp }}/delivery/
           if-no-files-found: error
+      - name: Upload Windows test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WestBeautyCompression-Windows-evidence
+          path: ${{ runner.temp }}/westbeauty-evidence/
+          if-no-files-found: warn

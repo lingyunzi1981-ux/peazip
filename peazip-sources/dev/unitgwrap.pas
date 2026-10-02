@@ -2570,7 +2570,7 @@ try
    if Succeeded(ShGetSpecialFolderLocation(FormGwrap.Handle,26,pidl)) then //26 is CSIDL_APPDATA numerical value
       if ShGetPathfromIDList(pidl, Buf ) then
          begin
-         s:=(Buf)+'\PeaZip\';
+         s:=(Buf)+'\WestBeautyCompression\';
          CoTaskMemFree(pidl);
          wingetappdata:=0;
          end
