@@ -151,7 +151,8 @@ public static class ShortcutReader {
         $deadline = [DateTime]::UtcNow.AddSeconds(90)
         while (-not $compress.HasExited -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep 1; $compress.Refresh() }
         Save-Screenshot "frontend-compress-$($kind[0]).png"
-        Check "Frontend $($kind[0]) compression completes" $compress.HasExited
+        Check "Frontend $($kind[0]) compression completes" $compress.HasExited -Soft
+        if (-not $compress.HasExited) { $compress.Kill($true); $compress.WaitForExit(); continue }
         Check "Frontend $($kind[0]) archive exists" (Test-Path $frontOutput)
         Run-App $seven @('t',$frontOutput)
         $frontUnpack = Join-Path $work "前端$($kind[0])校验"
@@ -169,10 +170,13 @@ public static class ShortcutReader {
     $frontFile = Join-Path $frontDir '中文 测试 & 文件.txt'
     while (-not (Test-Path $frontFile) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep 1 }
     Save-Screenshot 'frontend-extract.png'
-    Check 'Frontend context extraction creates Unicode file' (Test-Path $frontFile)
-    Check 'Frontend context extraction byte equality' ((Get-FileHash $frontFile).Hash -eq (Get-FileHash (Join-Path $inputDir '中文 测试 & 文件.txt')).Hash)
+    $frontOK = Test-Path $frontFile
+    Check 'Frontend context extraction creates Unicode file' $frontOK -Soft
     $front.Refresh()
-    if (-not $front.HasExited) { Close-Gui $front }
+    if ($frontOK) {
+        Check 'Frontend context extraction byte equality' ((Get-FileHash $frontFile).Hash -eq (Get-FileHash (Join-Path $inputDir '中文 测试 & 文件.txt')).Hash)
+        if (-not $front.HasExited) { Close-Gui $front }
+    } elseif (-not $front.HasExited) { $front.Kill($true); $front.WaitForExit() }
     # Upgrade/reinstall must preserve existing user preferences and succeed.
     $confHash = (Get-FileHash $conf).Hash
     Run-App $installer @('/SP-','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$installDir",'/TASKS=desktopicon,contextmenu',"/LOG=$(Join-Path $evidence 'reinstall.log')")

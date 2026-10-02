@@ -36,6 +36,12 @@ jobs:
         run: |
           & .github/workflows/setup.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Lazarus build failed' }
+      - name: Test Windows command injection guards
+        run: |
+          & 'C:\Lazarus\fpc\3.2.2\bin\x86_64-win64\fpc.exe' '-Fupeazip-sources/dev' "-FE$env:RUNNER_TEMP" "-FU$env:RUNNER_TEMP" '.github/scripts/test-windows-commandline.pas'
+          if ($LASTEXITCODE -ne 0) { throw 'Command inspection tests did not compile' }
+          & (Join-Path $env:RUNNER_TEMP 'test-windows-commandline.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Command injection guard regression' }
       - name: Build complete Unicode installer
         run: .github/scripts/build-westbeauty.ps1
       - name: Verify Windows installation and archive operations

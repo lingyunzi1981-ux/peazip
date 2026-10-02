@@ -157,7 +157,7 @@ The program is released under GNU LGPL http://www.gnu.org/licenses/lgpl.txt
 
 interface
 
-uses {$IFDEF MSWINDOWS}Windows,{$ENDIF} Classes, SysUtils, StrUtils,
+uses {$IFDEF MSWINDOWS}Windows, windows_commandline,{$ENDIF} Classes, SysUtils, StrUtils,
   StdCtrls, ComCtrls, ShellCtrls, FileUtil, Process, UTF8Process, mem_util;
 
 type
@@ -2405,7 +2405,7 @@ end;
 function validatecl(var s: ansistring): integer;
 var
   i: integer;
-  s1:ansistring;
+  s1,s2:ansistring;
 begin
 result := -1;
 if s = '' then exit;
@@ -2413,6 +2413,12 @@ if pos('#rejected_string#',s)<>0 then exit;//rejection string, in depth safeguar
 for i := 0 to 31 do if pos(char(i), s) <> 0 then exit; //illegal characters
 s1:=s;
 removepwfield(s,s1);//remove password field from tesing; pw are not sent in command line unless launching a script e.g. from Console tab
+{$IFDEF MSWINDOWS}
+// Quoted path characters are inert for direct 7z/TProcess execution. Inspect a
+// masked copy only; every unquoted operator remains subject to the checks below.
+// Shell/Console paths retain the original restrictions in validatecl_console.
+if InspectQuotedWindows7Zip(s1,s2) then s1:=s2;
+{$ENDIF}
 if pos('|',s1)<>0 then exit;//critical pipe
 if pos('&',s1)<>0 then exit;//critical ampersand command chaining
 if pos(';',s1)<>0 then exit;//critical semicolon command chaining
@@ -2440,6 +2446,7 @@ begin
 result := -1;
 if s='' then exit;
 {$IFDEF MSWINDOWS}
+if HasWindowsConsoleMetacharacters(s) then exit; //keep shell commands strict
 //seem not exploitable: % environment variables wrap, ^ escape character
 {$ELSE}
 if pos('"',s)<>0 then exit;
