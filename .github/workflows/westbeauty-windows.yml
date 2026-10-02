@@ -68,17 +68,30 @@ jobs:
           if (-not $mp) { $mp = "$env:ProgramFiles/Windows Defender/MpCmdRun.exe" }
           Get-MpThreat | ConvertTo-Json -Depth 8 | Set-Content "$evidence/threats-before.json"
           Get-MpThreatDetection | ConvertTo-Json -Depth 8 | Set-Content "$evidence/detections-before.json"
+          & $mp -? 2>&1 | Set-Content "$evidence/mpcmdrun-help.txt"
+          & $mp -CheckExclusion -Path $file 2>&1 | Set-Content "$evidence/exclusion-check.txt"
+          # Update only antivirus intelligence from Microsoft; no protection setting changes.
+          & $mp -SignatureUpdate -MMPC 2>&1 | Tee-Object -FilePath "$evidence/signature-update.txt"
+          $updateExit = $LASTEXITCODE
+          Get-MpComputerStatus | ConvertTo-Json -Depth 8 | Set-Content "$evidence/defender-prescan.json"
           $start = [DateTime]::UtcNow
           # Scan only. The candidate is never installed, launched, modified, repacked or submitted.
-          & $mp -Scan -ScanType 3 -File $file 2>&1 | Tee-Object -FilePath "$evidence/defender-scan.txt"
+          # Documented diagnostic switch ignores exclusions and scans archives without changing
+          # persistent policy. It disables remediation for this scan only, not antivirus protection.
+          & $mp -Scan -ScanType 3 -File $file -DisableRemediation 2>&1 | Tee-Object -FilePath "$evidence/defender-scan.txt"
           $scanExit = $LASTEXITCODE
           Get-MpComputerStatus | ConvertTo-Json -Depth 8 | Set-Content "$evidence/defender-after.json"
           Get-MpThreat | ConvertTo-Json -Depth 8 | Set-Content "$evidence/threats-after.json"
           Get-MpThreatDetection | ConvertTo-Json -Depth 8 | Set-Content "$evidence/detections-after.json"
           Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational';StartTime=$start.ToLocalTime()} -ErrorAction SilentlyContinue | Select-Object TimeCreated,Id,LevelDisplayName,Message | ConvertTo-Json -Depth 8 | Set-Content "$evidence/events.json"
-          @{StartedUtc=$start;FinishedUtc=[DateTime]::UtcNow;ScanExitCode=$scanExit;OriginalSHA256=$hash;OriginalRun=36997092787;SampleExecuted=$false;SettingsChanged=$false;Limits='Static installed-engine scan only; negative result does not establish safety or resolve another vendor detection.'} | ConvertTo-Json | Set-Content "$evidence/scan-summary.json"
+          @{StartedUtc=$start;FinishedUtc=[DateTime]::UtcNow;ScanExitCode=$scanExit;SignatureUpdateExitCode=$updateExit;OriginalSHA256=$hash;OriginalRun=36997092787;SampleExecuted=$false;SettingsChanged=$false;Limits='Static installed-engine scan only; negative result does not establish safety or resolve another vendor detection.'} | ConvertTo-Json | Set-Content "$evidence/scan-summary.json"
           Write-Host "Defender scan exit code: $scanExit"
+          $scanText = Get-Content "$evidence/defender-scan.txt" -Raw
+          if ($scanText -match '(?i)skipped') { throw 'Scan skipped; not a valid negative result' }
+          if ($scanText -notmatch '(?i)Scan finished') { throw 'Missing explicit scan completion; inspect evidence' }
           if ($scanExit -ne 0) { throw "Defender scan reported nonzero exit: $scanExit; inspect evidence" }
+          if (-not (Test-Path -LiteralPath $file)) { throw 'Original sample no longer present; inspect threats' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant() -ne $expected) { throw 'Original sample hash changed' }
       - name: Upload diagnostic text only, no executable samples
         if: always()
         uses: actions/upload-artifact@v4
