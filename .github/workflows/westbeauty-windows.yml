@@ -107,11 +107,11 @@ jobs:
           @{Version='1.13.0';URL=$toolUrl;SHA256=$toolHash;DebianProvenance='https://packages.debian.org/unstable/utils/innoextract'} | ConvertTo-Json | Set-Content "$evidence/extractor-provenance.json"
           & $tool --version 2>&1 | Set-Content "$evidence/extractor-version.txt"
           if ($LASTEXITCODE -ne 0) { throw 'Extractor version check failed' }
-          $listing = & $tool --list $file 2>&1
+          $listing = & $tool --list --no-extract-unknown $file 2>&1
           $listExit = $LASTEXITCODE
           $listing | Set-Content "$evidence/inner-payload-list.txt"
           if ($listExit -ne 0) { throw 'Static listing failed' }
-          $listedPaths = @($listing | ForEach-Object { if ("$_" -match '^ - "([^"]+)"') { $matches[1] } })
+          $listedPaths = @($listing | ForEach-Object { if ("$_" -match '^ - "([^"]+)"') { $matches[1].Replace('\','/') } })
           if ($listedPaths.Count -ne 502) { throw "Unexpected listed entry count: $($listedPaths.Count)" }
           foreach ($p in $listedPaths) {
             if (-not $p.StartsWith('app/') -or $p.Contains(':') -or ($p.Split('/') -contains '..') -or ($p.Split('/') -contains '.') -or $p.Contains('\')) { throw "Unsafe archive path: $p" }
@@ -119,7 +119,7 @@ jobs:
           if (($listedPaths | Select-Object -Unique).Count -ne $listedPaths.Count) { throw 'Duplicate archive paths' }
           $payload = Join-Path $env:RUNNER_TEMP 'original-inner-payload'
           New-Item -ItemType Directory -Force $payload | Out-Null
-          & $tool --extract --output-dir $payload $file 2>&1 | Set-Content "$evidence/extraction.txt"
+          & $tool --extract --no-extract-unknown --output-dir $payload $file 2>&1 | Set-Content "$evidence/extraction.txt"
           if ($LASTEXITCODE -ne 0) { throw 'Static extraction failed' }
           if (@(Get-ChildItem $payload -Recurse -Attributes ReparsePoint).Count) { throw 'Unexpected link in payload' }
           $files = @(Get-ChildItem $payload -Recurse -File)
