@@ -1,61 +1,88 @@
-name: West Beauty Windows Build
+name: West Beauty Candidate Security Investigation
 
 on:
   workflow_dispatch:
   push:
-    branches: [sources, codex/ximei-windows-stability]
+    branches: [codex/ximei-windows-stability]
     paths:
-      - 'peazip-sources/**'
       - '.github/workflows/westbeauty-windows.yml'
-      - '.github/workflows/ChineseSimplified.isl'
-      - '.github/scripts/**'
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  build-windows-x64:
+  scan-original-candidate:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     defaults:
       run:
         shell: pwsh
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Validate PowerShell scripts
+      - name: Inspect Defender availability and sample submission without changes
+        id: preflight
         run: |
-          foreach ($file in Get-ChildItem .github/scripts/*.ps1) {
-            $tokens=$null; $errors=$null
-            $null=[System.Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors)
-            if ($errors.Count) { $errors | Format-List *; throw "Invalid script: $file" }
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'security-evidence'
+          New-Item -ItemType Directory -Force $evidence | Out-Null
+          $status = Get-MpComputerStatus
+          $prefs = Get-MpPreference
+          $status | ConvertTo-Json -Depth 8 | Set-Content "$evidence/defender-before.json"
+          $prefs | Select-Object MAPSReporting,SubmitSamplesConsent,DisableRealtimeMonitoring,DisableArchiveScanning,DisableScanningDownloadedFilesAndAttachments | ConvertTo-Json | Set-Content "$evidence/defender-policy.json"
+          Get-Service WinDefend,Sense -ErrorAction SilentlyContinue | Select-Object Name,Status,StartType | ConvertTo-Json | Set-Content "$evidence/services.json"
+          $status | Select-Object AMServiceEnabled,AntivirusEnabled,AMRunningMode,AMEngineVersion,AMProductVersion,AntivirusSignatureVersion,AntivirusSignatureLastUpdated | Format-List
+          $prefs | Select-Object MAPSReporting,SubmitSamplesConsent,DisableRealtimeMonitoring,DisableArchiveScanning | Format-List
+          # Do not download the candidate until automatic sample submission is already prohibited.
+          # Never change protection settings or enable/disable any service here.
+          $sense = Get-Service Sense -ErrorAction SilentlyContinue
+          if ([int]$prefs.SubmitSamplesConsent -notin @(0,2)) {
+            throw 'BLOCKED: existing Defender policy permits automatic sample submission; no sample downloaded or policy changed.'
           }
-      - name: Install Lazarus and build PeaZip
-        run: |
-          & .github/workflows/setup.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Lazarus build failed' }
-      - name: Test Windows command injection guards
-        run: |
-          & 'C:\Lazarus\fpc\3.2.2\bin\x86_64-win64\fpc.exe' '-Fupeazip-sources/dev' "-FE$env:RUNNER_TEMP" "-FU$env:RUNNER_TEMP" '.github/scripts/test-windows-commandline.pas'
-          if ($LASTEXITCODE -ne 0) { throw 'Command inspection tests did not compile' }
-          & (Join-Path $env:RUNNER_TEMP 'test-windows-commandline.exe')
-          if ($LASTEXITCODE -ne 0) { throw 'Command injection guard regression' }
-      - name: Build complete Unicode installer
-        run: .github/scripts/build-westbeauty.ps1
-      - name: Verify Windows installation and archive operations
-        run: .github/scripts/test-westbeauty.ps1
-      - name: Upload verified installer
-        uses: actions/upload-artifact@v4
+          if ($sense -and $sense.Status -eq 'Running') {
+            throw 'BLOCKED: active MDE sensor may collect samples independently; no sample downloaded.'
+          }
+          if (-not $status.AMServiceEnabled) { throw 'BLOCKED: Defender service is unavailable; no security setting changed.' }
+          'allowed=true' >> $env:GITHUB_OUTPUT
+      - name: Download exact previously delivered artifact, never execute it
+        if: steps.preflight.outputs.allowed == 'true'
+        uses: actions/download-artifact@v4
         with:
           name: WestBeautyCompression-Windows-x64
-          path: ${{ runner.temp }}/delivery/
-          if-no-files-found: error
-      - name: Upload Windows test evidence
+          run-id: 36997092787
+          repository: lingyunzi1981-ux/peazip
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/original-candidate/
+      - name: Verify original hash and scan with installed Defender
+        if: steps.preflight.outputs.allowed == 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'security-evidence'
+          $file = Join-Path $env:RUNNER_TEMP 'original-candidate/WestBeautyCompression-Setup-x64.exe'
+          $expected = '6c2351f2640b856b7d55603138211fd2f50f35ceaad133134ff4f019646ca25e'
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
+          if ($hash -ne $expected) { throw "Original candidate hash mismatch: $hash" }
+          Get-Item -LiteralPath $file | Select-Object Name,Length | ConvertTo-Json | Set-Content "$evidence/sample.json"
+          $hash | Set-Content "$evidence/SHA256.txt"
+          Get-AuthenticodeSignature -LiteralPath $file | Select-Object Status,StatusMessage,@{Name='Signer';Expression={$_.SignerCertificate.Subject}} | ConvertTo-Json | Set-Content "$evidence/signature.json"
+          $mp = Get-ChildItem "$env:ProgramData/Microsoft/Windows Defender/Platform/*/MpCmdRun.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $mp) { $mp = "$env:ProgramFiles/Windows Defender/MpCmdRun.exe" }
+          Get-MpThreat | ConvertTo-Json -Depth 8 | Set-Content "$evidence/threats-before.json"
+          Get-MpThreatDetection | ConvertTo-Json -Depth 8 | Set-Content "$evidence/detections-before.json"
+          $start = [DateTime]::UtcNow
+          # Scan only. The candidate is never installed, launched, modified, repacked or submitted.
+          & $mp -Scan -ScanType 3 -File $file 2>&1 | Tee-Object -FilePath "$evidence/defender-scan.txt"
+          $scanExit = $LASTEXITCODE
+          Get-MpComputerStatus | ConvertTo-Json -Depth 8 | Set-Content "$evidence/defender-after.json"
+          Get-MpThreat | ConvertTo-Json -Depth 8 | Set-Content "$evidence/threats-after.json"
+          Get-MpThreatDetection | ConvertTo-Json -Depth 8 | Set-Content "$evidence/detections-after.json"
+          Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational';StartTime=$start.ToLocalTime()} -ErrorAction SilentlyContinue | Select-Object TimeCreated,Id,LevelDisplayName,Message | ConvertTo-Json -Depth 8 | Set-Content "$evidence/events.json"
+          @{StartedUtc=$start;FinishedUtc=[DateTime]::UtcNow;ScanExitCode=$scanExit;OriginalSHA256=$hash;OriginalRun=36997092787;SampleExecuted=$false;SettingsChanged=$false;Limits='Static installed-engine scan only; negative result does not establish safety or resolve another vendor detection.'} | ConvertTo-Json | Set-Content "$evidence/scan-summary.json"
+          Write-Host "Defender scan exit code: $scanExit"
+          if ($scanExit -ne 0) { throw "Defender scan reported nonzero exit: $scanExit; inspect evidence" }
+      - name: Upload diagnostic text only, no executable samples
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: WestBeautyCompression-Windows-evidence
-          path: ${{ runner.temp }}/westbeauty-evidence/
-          if-no-files-found: warn
+          name: WestBeautyCompression-security-investigation
+          path: ${{ runner.temp }}/security-evidence/
+          if-no-files-found: error
