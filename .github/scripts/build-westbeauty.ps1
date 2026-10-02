@@ -50,8 +50,24 @@ Copy-Item $hashSource (Join-Path $evidence 'build-generated-externalprograms.pas
 choco install imagemagick.app rcedit innosetup -y --no-progress
 if ($LASTEXITCODE -ne 0) { throw 'Build-tool installation failed' }
 $icon = Join-Path $stage 'WestBeautyCompression.ico'
-& magick -background none '.github/branding/westbeauty-compression.svg' -define icon:auto-resize=256,128,64,48,32,16 $icon
+& magick -background none '.github/branding/westbeauty-compression.svg' -depth 8 -compress none -define icon:auto-resize=256,128,64,48,32,16 $icon
 if ($LASTEXITCODE -ne 0) { throw 'Brand icon generation failed' }
+# Lazarus/Win32 must be able to decode every icon frame. PNG-in-ICO can become
+# a zero-bit-count resource after resource replacement, causing a startup dialog.
+$iconBytes = [IO.File]::ReadAllBytes($icon)
+$iconCount = [BitConverter]::ToUInt16($iconBytes,4)
+$iconFrames = @()
+for ($i=0; $i -lt $iconCount; $i++) {
+    $entry = 6 + 16*$i
+    $offset = [BitConverter]::ToUInt32($iconBytes,$entry+12)
+    $header = [BitConverter]::ToUInt32($iconBytes,$offset)
+    $depth = [BitConverter]::ToUInt16($iconBytes,$offset+14)
+    if ($header -ne 40 -or $depth -notin @(24,32)) { throw "Unsupported icon frame: header=$header depth=$depth" }
+    $iconFrames += @{ frame=$i; bitmap_header=$header; bits=$depth }
+}
+if ($iconCount -ne 6) { throw 'Missing multi-resolution icon frames' }
+$iconFrames | ConvertTo-Json | Set-Content (Join-Path $evidence 'icon-validation.json') -Encoding utf8
+Copy-Item $icon $evidence
 & rcedit (Join-Path $stage 'peazip.exe') --set-icon $icon --set-version-string ProductName $brand --set-version-string FileDescription "$brand - 文件与压缩管理器" --set-file-version $version --set-product-version $version
 if ($LASTEXITCODE -ne 0) { throw 'Executable resource branding failed' }
 Copy-Item (Join-Path $stage 'peazip.exe') (Join-Path $stage "$brand.exe")
