@@ -68,8 +68,74 @@ for ($i=0; $i -lt $iconCount; $i++) {
 if ($iconCount -ne 6) { throw 'Missing multi-resolution icon frames' }
 $iconFrames | ConvertTo-Json | Set-Content (Join-Path $evidence 'icon-validation.json') -Encoding utf8
 Copy-Item $icon $evidence
-& rcedit (Join-Path $stage 'peazip.exe') --set-icon $icon --set-version-string ProductName $brand --set-version-string FileDescription "$brand - 文件与压缩管理器" --set-file-version $version --set-product-version $version
+& rcedit (Join-Path $stage 'peazip.exe') --set-version-string ProductName $brand --set-version-string FileDescription "$brand - 文件与压缩管理器" --set-file-version $version --set-product-version $version
 if ($LASTEXITCODE -ne 0) { throw 'Executable resource branding failed' }
+# Lazarus names its icon group MAINICON. rcedit 2.0.0 treats group names as
+# integer IDs, so --set-icon can leave MAINICON pointing at mismatched frames.
+# Update the exact Unicode resource name with the documented Win32 API instead.
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class LazarusIconResource {
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  static extern IntPtr BeginUpdateResourceW(string file, bool deleteExisting);
+  [DllImport("kernel32.dll", EntryPoint="UpdateResourceW", SetLastError=true)]
+  static extern bool UpdateImage(IntPtr update, IntPtr type, IntPtr name, ushort language, byte[] data, uint length);
+  [DllImport("kernel32.dll", EntryPoint="UpdateResourceW", CharSet=CharSet.Unicode, SetLastError=true)]
+  static extern bool UpdateGroup(IntPtr update, IntPtr type, string name, ushort language, byte[] data, uint length);
+  [DllImport("kernel32.dll", SetLastError=true)]
+  static extern bool EndUpdateResourceW(IntPtr update, bool discard);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  static extern IntPtr LoadLibraryExW(string file, IntPtr reserved, uint flags);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  static extern IntPtr FindResourceExW(IntPtr module, IntPtr type, string name, ushort language);
+  [DllImport("kernel32.dll", SetLastError=true)]
+  static extern IntPtr LoadResource(IntPtr module, IntPtr resource);
+  [DllImport("kernel32.dll")] static extern IntPtr LockResource(IntPtr resource);
+  [DllImport("kernel32.dll")] static extern uint SizeofResource(IntPtr module, IntPtr resource);
+  [DllImport("kernel32.dll")] static extern bool FreeLibrary(IntPtr module);
+  static void Require(bool ok) { if (!ok) throw new Win32Exception(Marshal.GetLastWin32Error()); }
+  public static void Apply(string executable, string icon) {
+    byte[] bytes = File.ReadAllBytes(icon);
+    ushort count = BitConverter.ToUInt16(bytes,4);
+    byte[] group;
+    using(var memory = new MemoryStream()) {
+      using(var writer = new BinaryWriter(memory)) {
+        writer.Write((ushort)0); writer.Write((ushort)1); writer.Write(count);
+        for(int i=0;i<count;i++) { writer.Write(bytes,6+16*i,12); writer.Write((ushort)(6000+i)); }
+        group=memory.ToArray();
+      }
+    }
+    IntPtr update=BeginUpdateResourceW(executable,false);
+    Require(update != IntPtr.Zero);
+    try {
+      for(int i=0;i<count;i++) {
+        int entry=6+16*i;
+        int length=checked((int)BitConverter.ToUInt32(bytes,entry+8));
+        int offset=checked((int)BitConverter.ToUInt32(bytes,entry+12));
+        byte[] frame=new byte[length]; Array.Copy(bytes,offset,frame,0,length);
+        Require(UpdateImage(update,(IntPtr)3,(IntPtr)(6000+i),0,frame,(uint)length));
+      }
+      Require(UpdateGroup(update,(IntPtr)14,"MAINICON",0,group,(uint)group.Length));
+      Require(EndUpdateResourceW(update,false)); update=IntPtr.Zero;
+    } finally { if(update != IntPtr.Zero) EndUpdateResourceW(update,true); }
+    IntPtr module=LoadLibraryExW(executable,IntPtr.Zero,2);
+    Require(module != IntPtr.Zero);
+    try {
+      IntPtr resource=FindResourceExW(module,(IntPtr)14,"MAINICON",0);
+      Require(resource != IntPtr.Zero);
+      Require(SizeofResource(module,resource)==group.Length);
+      IntPtr data=LockResource(LoadResource(module,resource)); Require(data != IntPtr.Zero);
+      byte[] actual=new byte[group.Length]; Marshal.Copy(data,actual,0,actual.Length);
+      for(int i=0;i<group.Length;i++) if(actual[i]!=group[i]) throw new IOException("MAINICON resource verification failed");
+    } finally { FreeLibrary(module); }
+  }
+}
+'@
+[LazarusIconResource]::Apply((Join-Path $stage 'peazip.exe'),$icon)
+'PASS: exact MAINICON resource and six image references verified' | Set-Content (Join-Path $evidence 'icon-resource-validation.txt')
 Copy-Item (Join-Path $stage 'peazip.exe') (Join-Path $stage "$brand.exe")
 Copy-Item 'LICENSE' (Join-Path $stage 'LICENSE.txt')
 @"
