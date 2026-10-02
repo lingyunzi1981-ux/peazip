@@ -34658,6 +34658,17 @@ if not(checkdirexists((s))) then
    result:=0;
    exit;
    end;
+{$IFDEF MSWINDOWS}
+// A successful extraction leaves an empty staging directory. Remove it using
+// the Unicode filesystem API, never a shell command. Windows refuses non-empty
+// directories here; those retain the original guarded cleanup path below.
+if checkfiledirname(s)=0 then
+   if Windows.RemoveDirectoryW(PWideChar(UTF8Decode(s))) then
+      begin
+      result:=0;
+      exit;
+      end;
+{$ENDIF}
 if validatecl(s)<>0 then
    begin
    if s<>'' then pMessageWarningOK(txt_2_7_validatecl+' '+s);

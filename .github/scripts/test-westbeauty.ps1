@@ -153,6 +153,7 @@ public static class ShortcutReader {
         Save-Screenshot "frontend-compress-$($kind[0]).png"
         Check "Frontend $($kind[0]) compression completes" $compress.HasExited -Soft
         if (-not $compress.HasExited) { $compress.Kill($true); $compress.WaitForExit(); continue }
+        Check "Frontend $($kind[0]) successful exit" ($compress.ExitCode -eq 0)
         Check "Frontend $($kind[0]) archive exists" (Test-Path $frontOutput)
         Run-App $seven @('t',$frontOutput)
         $frontUnpack = Join-Path $work "前端$($kind[0])校验"
@@ -175,7 +176,10 @@ public static class ShortcutReader {
     $front.Refresh()
     if ($frontOK) {
         Check 'Frontend context extraction byte equality' ((Get-FileHash $frontFile).Hash -eq (Get-FileHash (Join-Path $inputDir '中文 测试 & 文件.txt')).Hash)
+        if (-not $front.HasExited) { $null = $front.WaitForExit(10000); $front.Refresh() }
         if (-not $front.HasExited) { Close-Gui $front }
+        Check 'Frontend extraction successful exit' ($front.ExitCode -eq 0)
+        Check 'Extraction staging directory is removed' (-not @(Get-ChildItem $frontDir -Force -Directory -Filter '.petmp*').Count)
     } elseif (-not $front.HasExited) { $front.Kill($true); $front.WaitForExit() }
     # Upgrade/reinstall must preserve existing user preferences and succeed.
     $confHash = (Get-FileHash $conf).Hash
