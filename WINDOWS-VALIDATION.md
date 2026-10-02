@@ -6,7 +6,7 @@
 
 - 原始交付包 SHA256 已复核一致：`6c2351f2640b856b7d55603138211fd2f50f35ceaad133134ff4f019646ca25e`
 - [有效 Defender 诊断扫描](https://github.com/lingyunzi1981-ux/peazip/actions/runs/36999292840)针对同一个原包，输出 `found no threats`；没有执行、安装、修改或重打包样本
-- Windows Server 2025；引擎 `1.1.26080.3`，平台 `4.18.26080.4`，病毒库 `1.459.405.0`。病毒库日期为 2026-09-25；Microsoft 更新命令返回 `No updates needed`，因此不能宣称覆盖所有最新检测
+- Windows Server 2025；引擎 `1.1.26080.3`，平台 `4.18.26080.4`。扫描前与扫描后的 Defender 状态 JSON 都记录病毒库 `1.459.516.0`，更新时间 `2026-10-02 05:45:08 UTC`。更新命令文本仍显示旧版 `1.459.405.0` 和 `No updates needed`；实际扫描版本以紧邻扫描的状态快照为准
 - runner 既有策略为 `MAPSReporting=0`、`SubmitSamplesConsent=2`，MDE Sense 未运行；本调查未改变防护策略或提交文件样本
 - 首轮 Run 36999102663 虽然退出码为 0，但日志明确显示 `was skipped`，不是有效阴性结果。后续使用微软文档的单次诊断参数 `-DisableRemediation` 忽略排除并扫描档案，不改变持久策略；检测结果以命令输出保存
 - 单引擎静态阴性不能否定另一个产品的告警，且日志没有证明逐个识别了所有 Inno 内层组件。仍需要告警产品、威胁名称、命中路径/内层文件和截图，才能进一步定点分析
