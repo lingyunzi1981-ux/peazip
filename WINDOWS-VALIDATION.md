@@ -1,6 +1,22 @@
 # 西美压缩 Windows 候选版验收
 
-## 最终构建
+## 安全状态：待确认，暂停分发与使用（2026-10-02）
+
+已有恶意软件告警待定位。下文 79 项功能断言和 16 项命令回归仅是功能/定向安全检查，不能证明无木马。不要运行此候选包，不要关闭杀毒、加白名单或恢复隔离。
+
+- 原始交付包 SHA256 已复核一致：`6c2351f2640b856b7d55603138211fd2f50f35ceaad133134ff4f019646ca25e`
+- [有效 Defender 诊断扫描](https://github.com/lingyunzi1981-ux/peazip/actions/runs/36999292840)针对同一个原包，输出 `found no threats`；没有执行、安装、修改或重打包样本
+- Windows Server 2025；引擎 `1.1.26080.3`，平台 `4.18.26080.4`，病毒库 `1.459.405.0`。病毒库日期为 2026-09-25；Microsoft 更新命令返回 `No updates needed`，因此不能宣称覆盖所有最新检测
+- runner 既有策略为 `MAPSReporting=0`、`SubmitSamplesConsent=2`，MDE Sense 未运行；本调查未改变防护策略或提交文件样本
+- 首轮 Run 36999102663 虽然退出码为 0，但日志明确显示 `was skipped`，不是有效阴性结果。后续使用微软文档的单次诊断参数 `-DisableRemediation` 忽略排除并扫描档案，不改变持久策略；检测结果以命令输出保存
+- 单引擎静态阴性不能否定另一个产品的告警，且日志没有证明逐个识别了所有 Inno 内层组件。仍需要告警产品、威胁名称、命中路径/内层文件和截图，才能进一步定点分析
+- 静态核对最终安装脚本未发现启动项、服务、关闭防护、Defender 排除或安装时联网下载。源码定时任务和网页扫描入口为用户触发功能；这不是完整动态安全证明
+- 已确认供应链验证缺口：Lazarus 下载后未校验固定哈希或签名；Chocolatey 构建工具未在项目中锁版本/哈希。日志记录实际 ImageMagick 7.1.2.2500、rcedit 2.0.0、Inno Setup 6.7.1；这不构成木马证据，也不能忽略
+- 官方 PeaZip 11.3.0 portable 已有固定 SHA256 校验；主程序/PEA 为重建二进制，安装包未签名。未签名本身不能说明本次告警是误报
+
+[只含诊断文本的扫描证据](https://github.com/lingyunzi1981-ux/peazip/actions/runs/36999292840/artifacts/11223220131) · [Microsoft 扫描参数说明](https://learn.microsoft.com/en-us/defender-endpoint/command-line-arguments-microsoft-defender-antivirus) · [Microsoft 样本提交说明](https://learn.microsoft.com/en-us/defender-endpoint/cloud-protection-microsoft-antivirus-sample-submission)
+
+## 原候选构建（保留诊断记录）
 
 - 安装包版本：11.3.0.1，基于 PeaZip 11.3.0
 - 验收提交：`08457633680c459bcd2e91263dd627f557010fbd`
@@ -53,7 +69,7 @@
 ## 证据和来源
 
 - [验证过的源码](https://github.com/lingyunzi1981-ux/peazip/tree/08457633680c459bcd2e91263dd627f557010fbd)
-- [安装包构建 artifact](https://github.com/lingyunzi1981-ux/peazip/actions/runs/36997092787/artifacts/11222870216)
+- [原包构建 artifact（仅用于诊断，暂停使用）](https://github.com/lingyunzi1981-ux/peazip/actions/runs/36997092787/artifacts/11222870216)
 - [Windows 日志、79 项断言和截图](https://github.com/lingyunzi1981-ux/peazip/actions/runs/36997092787/artifacts/11221864844)
 - [Inno Setup Unicode 说明](https://jrsoftware.org/ishelp/topic_unicode.htm)
 - [Inno Setup 中文翻译来源](https://github.com/jrsoftware/issrc/blob/main/Files/Languages/ChineseSimplified.isl)
