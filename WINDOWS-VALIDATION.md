@@ -2,19 +2,36 @@
 
 ## 安全状态：待确认，暂停分发与使用（2026-10-02）
 
-已有恶意软件告警待定位。下文 79 项功能断言和 16 项命令回归仅是功能/定向安全检查，不能证明无木马。不要运行此候选包，不要关闭杀毒、加白名单或恢复隔离。
+已确认 360 告警为安装后的 `西美压缩.exe` / `Trojan.Generic`。尚未确认恶意或误报。下文 79 项功能断言和 16 项命令回归仅是功能/定向安全检查，不能证明无木马。不要运行此候选包，不要关闭杀毒、加白名单或恢复隔离。
 
 - 原始交付包 SHA256 已复核一致：`6c2351f2640b856b7d55603138211fd2f50f35ceaad133134ff4f019646ca25e`
 - [有效 Defender 诊断扫描](https://github.com/lingyunzi1981-ux/peazip/actions/runs/36999292840)针对同一个原包，输出 `found no threats`；没有执行、安装、修改或重打包样本
 - Windows Server 2025；引擎 `1.1.26080.3`，平台 `4.18.26080.4`。扫描前与扫描后的 Defender 状态 JSON 都记录病毒库 `1.459.516.0`，更新时间 `2026-10-02 05:45:08 UTC`。更新命令文本仍显示旧版 `1.459.405.0` 和 `No updates needed`；实际扫描版本以紧邻扫描的状态快照为准
 - runner 既有策略为 `MAPSReporting=0`、`SubmitSamplesConsent=2`，MDE Sense 未运行；本调查未改变防护策略或提交文件样本
 - 首轮 Run 36999102663 虽然退出码为 0，但日志明确显示 `was skipped`，不是有效阴性结果。后续使用微软文档的单次诊断参数 `-DisableRemediation` 忽略排除并扫描档案，不改变持久策略；检测结果以命令输出保存
-- 单引擎静态阴性不能否定另一个产品的告警，且日志没有证明逐个识别了所有 Inno 内层组件。仍需要告警产品、威胁名称、命中路径/内层文件和截图，才能进一步定点分析
+- 早先外层扫描没有逐项证明 Inno 内层覆盖，不能用于排除主程序告警。现已取得截图并完成下述原包静态提取和 500 文件逐项扫描；360 告警尚未经该厂商复核
 - 静态核对最终安装脚本未发现启动项、服务、关闭防护、Defender 排除或安装时联网下载。源码定时任务和网页扫描入口为用户触发功能；这不是完整动态安全证明
 - 已确认供应链验证缺口：Lazarus 下载后未校验固定哈希或签名；Chocolatey 构建工具未在项目中锁版本/哈希。日志记录实际 ImageMagick 7.1.2.2500、rcedit 2.0.0、Inno Setup 6.7.1；这不构成木马证据，也不能忽略
 - 官方 PeaZip 11.3.0 portable 已有固定 SHA256 校验；主程序/PEA 为重建二进制，安装包未签名。未签名本身不能说明本次告警是误报
 
 [只含诊断文本的扫描证据](https://github.com/lingyunzi1981-ux/peazip/actions/runs/36999292840/artifacts/11223220131) · [Microsoft 扫描参数说明](https://learn.microsoft.com/en-us/defender-endpoint/command-line-arguments-microsoft-defender-antivirus) · [Microsoft 样本提交说明](https://learn.microsoft.com/en-us/defender-endpoint/cloud-protection-microsoft-antivirus-sample-submission)
+
+### 内层主程序调查（2026-10-02 11:58 UTC）
+
+- Linux 与 Windows 分别用固定版本、核验 SHA256 的 innoextract 1.13.0 静态提取同一原包，不执行安装器、安装脚本、主程序或任何样本组件
+- Linux 工具来自 Debian 官方包；Windows 工具来自 Debian 当前采用的维护分支 [crazy-max/innoextract v1.13.0](https://github.com/crazy-max/innoextract/releases/tag/v1.13.0)，工具 SHA256 为 `5700fb1e82e6812bb341b964470537161e07a127d29eecfe176f5198cf215a59`
+- 两端得到 500 个文件、合计 50,233,294 bytes；逐个相对路径、大小、SHA256 全部一致。预检 502 条路径（含两空目录），无路径穿越或符号链接；Linux 独立数据块完整性测试通过
+- 命中主程序大小 7,650,304 bytes，SHA256：`a9b0418efc6d4c7f6fede9f53d58d54724fa6b4b3f1f33aac1159c5c95e11ee3`，与包内 `peazip.exe` 字节完全一致。截图不提供用户电脑上文件的 hash，所以这里只确认原交付包内文件身份，不宣称已比对用户隔离区中的字节
+- [Windows 逐文件扫描 Run 37003585608](https://github.com/lingyunzi1981-ux/peazip/actions/runs/37003585608)首先扫描中文主程序，再扫描全部 500 文件。500/500 均明确输出 `found no threats`，无 skipped、无非零退出码、无扫描前后字节变化
+- 实际扫描前后状态均为 Defender 引擎 `1.1.26080.3` / 平台 `4.18.26080.4` / 病毒库 `1.459.516.0`（2026-10-02 05:45:08 UTC）。既有禁止自动样本提交策略保持不变；仅保存哈希和诊断文本，未上传样本至扫描服务
+- 30 项运行时二进制、模板、图标库中，27 项与固定 SHA 的官方 PeaZip 11.3.0 运行时逐字节一致。差异只包括重建 GUI、重建 PEA、与 GUI 同字节的中文别名
+- 实际主 PE 没有新增可执行节、静态导入或文件尾附加数据；唯一静态导入差异为移除 `user32!SetWindowLongPtrA`。这类结构检查不能排除代码段中的恶意逻辑
+- 主 PE 的 122 个既有资源未变，更新版本资源及 `MAINICON`，新增 6 帧图标；每帧与随包 ICO 精确一致。PEA 的全部 104 个资源未变。构建脚本资源处理没有运行时注入逻辑；但 GUI/PEA 是重编译二进制，代码节不同，不能说整个 EXE 仅改资源
+- 供应链验证缺口和未签名状态仍存在；尚未建立原始构建工具全链条独立验证与可重复构建证明。Defender 单引擎静态阴性不是安全认证，不能据此否定 360 告警
+
+[500 项逐文件结果、完整日志、内层 SHA 清单和签名状态](https://github.com/lingyunzi1981-ux/peazip/actions/runs/37003585608/artifacts/11224756947)。证据 ZIP SHA256：`ef182e2bee91f5884097eb82c423c95f9fa604f811b01ff750ceb90f56f1990e`。
+
+下一步为经授权向 [360 官方反馈渠道](https://open.soft.360.cn/report.php)请求针对上述准确主程序的复核；页面需要样本、截图、邮箱和手机验证码。尚未上传或填写这些信息。无需用户恢复隔离文件或运行可疑程序；继续保持停用。
 
 ## 原候选构建（保留诊断记录）
 
