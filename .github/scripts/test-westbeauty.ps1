@@ -56,7 +56,34 @@ try {
     $shell = New-Object -ComObject WScript.Shell
     $shortcutPath = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) "$brand.lnk"
     Check 'Unicode desktop shortcut exists' (Test-Path $shortcutPath)
-    Check 'Shortcut target is exact Unicode executable' ($shell.CreateShortcut($shortcutPath).TargetPath -eq $app)
+    # WScript.Shell has a legacy ANSI path; read the shortcut via IShellLinkW.
+    Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+[ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+public class UnicodeShellLink { }
+[ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("000214F9-0000-0000-C000-000000000046")]
+public interface IUnicodeShellLink {
+  [PreserveSig] int GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path, int length, IntPtr data, uint flags);
+}
+public static class ShortcutReader {
+  public static string Target(string file) {
+    object instance = new UnicodeShellLink();
+    try {
+      ((IPersistFile)instance).Load(file, 0);
+      var output = new StringBuilder(32768);
+      Marshal.ThrowExceptionForHR(((IUnicodeShellLink)instance).GetPath(output, output.Capacity, IntPtr.Zero, 0));
+      return output.ToString();
+    } finally { Marshal.FinalReleaseComObject(instance); }
+  }
+}
+'@
+    $shortcutTarget = [ShortcutReader]::Target($shortcutPath)
+    @{ expected=$app; unicode_target=$shortcutTarget; wscript_target=$shell.CreateShortcut($shortcutPath).TargetPath } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut-targets.json') -Encoding utf8
+    Copy-Item $shortcutPath (Join-Path $evidence 'desktop-shortcut.lnk')
+    Check 'Shortcut target is exact Unicode executable' ($shortcutTarget -eq $app)
     $registryChecks = @(
         @('Software\Classes\*\shell\WestBeautyCompress','西美压缩 - 添加到压缩文件...','-add2archive'),
         @('Software\Classes\Directory\shell\WestBeautyZip','西美压缩 - 压缩为 ZIP','-add2zip'),
