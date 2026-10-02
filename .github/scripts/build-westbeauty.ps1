@@ -132,7 +132,7 @@ foreach ($root in @('*','Directory')) {
 foreach ($extension in @('.7z','.zip','.rar','.tar','.gz','.bz2','.xz','.zst','.cab','.iso','.wim','.pea')) {
     $key = "Software\Classes\SystemFileAssociations\$extension\shell"
     foreach ($entry in @(
-        @('WestBeautyOpen', "用$brand打开", '-ext2openasarchive'),
+        @('WestBeautyOpen', "用${brand}打开", '-ext2openasarchive'),
         @('WestBeautyExtract', "$brand - 解压到当前文件夹", '-ext2here'),
         @('WestBeautyExtractFolder', "$brand - 解压到新文件夹", '-ext2newfolder')
     )) {
@@ -153,7 +153,7 @@ Filename: "{app}\$brand.exe"; Description: "运行 $brand"; Flags: nowait postin
 "@
 # UTF-8 with BOM is unambiguous on every supported Inno Setup 6 compiler.
 [IO.File]::WriteAllText($iss, $script, [Text.UTF8Encoding]::new($true))
-foreach ($text in @("AppName=$brand", "{group}\$brand", "用$brand打开", '解压到当前文件夹')) {
+foreach ($text in @("AppName=$brand", "{group}\$brand", "用${brand}打开", '解压到当前文件夹')) {
     if (-not [IO.File]::ReadAllText($iss).Contains($text)) { throw "Unicode source check failed: $text" }
 }
 Copy-Item $iss,$lang $evidence
