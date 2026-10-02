@@ -92,6 +92,83 @@ jobs:
           if ($scanExit -ne 0) { throw "Defender scan reported nonzero exit: $scanExit; inspect evidence" }
           if (-not (Test-Path -LiteralPath $file)) { throw 'Original sample no longer present; inspect threats' }
           if ((Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant() -ne $expected) { throw 'Original sample hash changed' }
+      - name: Statically extract original payload with pinned trusted extractor
+        if: steps.preflight.outputs.allowed == 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'security-evidence'
+          $file = Join-Path $env:RUNNER_TEMP 'original-candidate/WestBeautyCompression-Setup-x64.exe'
+          $tool = Join-Path $env:RUNNER_TEMP 'innoextract-v1.13.0.exe'
+          $toolUrl = 'https://github.com/crazy-max/innoextract/releases/download/v1.13.0/innoextract-windows-amd64.exe'
+          $toolHash = '5700fb1e82e6812bb341b964470537161e07a127d29eecfe176f5198cf215a59'
+          # This upstream is the homepage selected by Debian's official innoextract 1.13 package.
+          Invoke-WebRequest $toolUrl -OutFile $tool
+          if ((Get-FileHash -LiteralPath $tool).Hash.ToLowerInvariant() -ne $toolHash) { throw 'Extractor SHA256 mismatch' }
+          @{Version='1.13.0';URL=$toolUrl;SHA256=$toolHash;DebianProvenance='https://packages.debian.org/unstable/utils/innoextract'} | ConvertTo-Json | Set-Content "$evidence/extractor-provenance.json"
+          & $tool --version 2>&1 | Set-Content "$evidence/extractor-version.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'Extractor version check failed' }
+          $listing = & $tool --list $file 2>&1
+          $listExit = $LASTEXITCODE
+          $listing | Set-Content "$evidence/inner-payload-list.txt"
+          if ($listExit -ne 0) { throw 'Static listing failed' }
+          $listedPaths = @($listing | ForEach-Object { if ("$_" -match '^ - "([^"]+)"') { $matches[1] } })
+          if ($listedPaths.Count -ne 502) { throw "Unexpected listed entry count: $($listedPaths.Count)" }
+          foreach ($p in $listedPaths) {
+            if (-not $p.StartsWith('app/') -or $p.Contains(':') -or ($p.Split('/') -contains '..') -or ($p.Split('/') -contains '.') -or $p.Contains('\')) { throw "Unsafe archive path: $p" }
+          }
+          if (($listedPaths | Select-Object -Unique).Count -ne $listedPaths.Count) { throw 'Duplicate archive paths' }
+          $payload = Join-Path $env:RUNNER_TEMP 'original-inner-payload'
+          New-Item -ItemType Directory -Force $payload | Out-Null
+          & $tool --extract --output-dir $payload $file 2>&1 | Set-Content "$evidence/extraction.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'Static extraction failed' }
+          if (@(Get-ChildItem $payload -Recurse -Attributes ReparsePoint).Count) { throw 'Unexpected link in payload' }
+          $files = @(Get-ChildItem $payload -Recurse -File)
+          if ($files.Count -ne 500) { throw "Unexpected payload file count: $($files.Count)" }
+          $main = Join-Path $payload 'app/西美压缩.exe'
+          $alias = Join-Path $payload 'app/peazip.exe'
+          $mainHash = 'a9b0418efc6d4c7f6fede9f53d58d54724fa6b4b3f1f33aac1159c5c95e11ee3'
+          foreach ($p in @($main,$alias)) { if ((Get-FileHash -LiteralPath $p).Hash.ToLowerInvariant() -ne $mainHash) { throw "Extracted main identity mismatch: $p" } }
+          $files | ForEach-Object {
+            @{Path=[IO.Path]::GetRelativePath($payload,$_.FullName).Replace('\','/');Bytes=$_.Length;SHA256=(Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant()}
+          } | ConvertTo-Json -Depth 5 | Set-Content "$evidence/inner-manifest.json"
+          $files | Where-Object {$_.Extension -in @('.exe','.dll','.sfx')} | ForEach-Object {
+            $s=Get-AuthenticodeSignature -LiteralPath $_.FullName
+            @{Path=[IO.Path]::GetRelativePath($payload,$_.FullName).Replace('\','/');Status="$($s.Status)";Signer="$($s.SignerCertificate.Subject)"}
+          } | ConvertTo-Json -Depth 5 | Set-Content "$evidence/inner-signatures.json"
+          Write-Host "Extracted 500 original files without executing the installer; main SHA256=$mainHash"
+      - name: Scan main executable first then every extracted file
+        if: steps.preflight.outputs.allowed == 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'security-evidence'
+          $payload = Join-Path $env:RUNNER_TEMP 'original-inner-payload'
+          $mp = Get-ChildItem "$env:ProgramData/Microsoft/Windows Defender/Platform/*/MpCmdRun.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $mp) { $mp = "$env:ProgramFiles/Windows Defender/MpCmdRun.exe" }
+          $prefs = Get-MpPreference
+          if ([int]$prefs.SubmitSamplesConsent -notin @(0,2)) { throw 'Policy changed: refuse potential sample submission' }
+          Get-MpComputerStatus | ConvertTo-Json -Depth 8 | Set-Content "$evidence/inner-defender-before.json"
+          $files = @(Get-ChildItem $payload -Recurse -File | Sort-Object @{Expression={if($_.Name -eq '西美压缩.exe'){0}else{1}}},FullName)
+          $results = [Collections.Generic.List[object]]::new()
+          foreach ($f in $files) {
+            $relative = [IO.Path]::GetRelativePath($payload,$f.FullName).Replace('\','/')
+            $beforeHash = (Get-FileHash -LiteralPath $f.FullName).Hash.ToLowerInvariant()
+            $output = & $mp -Scan -ScanType 3 -File $f.FullName -DisableRemediation 2>&1
+            $code = $LASTEXITCODE
+            $text = $output -join "`n"
+            $complete = $code -eq 0 -and $text -match '(?i)found no threats' -and $text -notmatch '(?i)skipped'
+            $afterHash = (Get-FileHash -LiteralPath $f.FullName).Hash.ToLowerInvariant()
+            $item = @{Path=$relative;SHA256=$beforeHash;Bytes=$f.Length;ExitCode=$code;ExplicitNoThreats=$complete;BytesUnchanged=($beforeHash -eq $afterHash)}
+            $results.Add($item)
+            "FILE: $relative SHA256: $beforeHash" | Add-Content "$evidence/per-file-defender.log"
+            $output | Add-Content "$evidence/per-file-defender.log"
+            if ($results.Count -eq 1 -or $results.Count % 25 -eq 0 -or -not $complete) { Write-Host "Scanned $($results.Count)/$($files.Count): $relative explicitNoThreats=$complete exit=$code" }
+          }
+          $results | ConvertTo-Json -Depth 6 | Set-Content "$evidence/per-file-results.json"
+          Get-MpComputerStatus | ConvertTo-Json -Depth 8 | Set-Content "$evidence/inner-defender-after.json"
+          $prefs | Select-Object MAPSReporting,SubmitSamplesConsent,DisableRealtimeMonitoring,DisableArchiveScanning | ConvertTo-Json | Set-Content "$evidence/inner-policy.json"
+          $failed=@($results | Where-Object {-not $_.ExplicitNoThreats -or -not $_.BytesUnchanged})
+          @{FileCount=$results.Count;ExplicitNoThreatCount=$results.Count-$failed.Count;InconclusiveOrDetected=$failed.Count;SamplesExecuted=$false;SettingsChanged=$false;NoSampleSubmission=$true;Limitation='Defender local static results do not invalidate the reported 360 Trojan.Generic detection.'} | ConvertTo-Json | Set-Content "$evidence/inner-scan-summary.json"
+          if ($results.Count -ne 500 -or $failed.Count) { throw "Incomplete or non-negative scans: $($failed.Count)/$($results.Count)" }
       - name: Upload diagnostic text only, no executable samples
         if: always()
         uses: actions/upload-artifact@v4
